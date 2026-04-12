@@ -12,6 +12,8 @@ data_ai_*.csv
 dataset_final_1000.csv
 dataset_final_1500.csv
 dataset_ai_*.csv
+0_dataset/*.csv
+dataset_skripsi_manusia_ai_*.csv
 
 # File hasil analisis (banyak duplikat)
 analysis_*.csv
@@ -34,14 +36,13 @@ probability_distribution.png
 
 # Archive folder
 archive_*/
-archive_*/
 
-# Model checkpoints (kecuali final)
-models_indobert/checkpoint-*/
-
-# Large model files (IndoBERT > 100MB)
-models_indobert/final_model/model.safetensors
-models_indobert/final_model/
+# ====================================================
+# HASIL TRAINING & MODEL (DIBLOKIR TOTAL)
+# ====================================================
+backup_hasil_lama/
+hasil_phase*/
+models_*/
 
 # File lain
 nul

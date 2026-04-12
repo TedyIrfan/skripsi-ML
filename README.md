@@ -1,165 +1,190 @@
-# Deteksi Tulisan AI vs Manusia (Bahasa Indonesia)
+# 🤖 Deteksi Tulisan AI vs Manusia — Bahasa Indonesia
 
-Project Skripsi - Sistem Klasifikasi Machine Learning buat membedakan tulisan yang dibuat oleh AI dan manusia dalam Bahasa Indonesia.
 
-## Dataset
+https://drive.google.com/drive/folders/1CSNpGkm1fTLvriVB1SFY5XK1-1WlYg-w?usp=sharing
 
-### Download Dataset & Model
+**Skripsi S1 Teknik Informatika**
+Sistem klasifikasi machine learning untuk membedakan teks buatan AI dan manusia dalam Bahasa Indonesia.
 
-Dataset dan model gede bisa diunduh dari Google Drive:
+---
 
-**[Google Drive Folder](https://drive.google.com/drive/folders/15vydyLv3M7Ap4lruqLBWxV80PvIg4hHA?usp=sharing)**
+## 📊 Status Project
 
-Isi folder:
-- `dataset_final_1500.csv` - Dataset utama (~1.5 MB)
-- `models_indobert/` - Model IndoBERT (~475 MB)
+| Phase | Deskripsi | Status |
+|-------|-----------|--------|
+| ✅ Phase 1 | Pengumpulan & pembersihan dataset | **SELESAI** |
+| ✅ Phase 2 | Pembangunan dataset final | **SELESAI** |
+| ✅ Phase 3 | Pembersihan & reorganisasi project | **SELESAI** |
+| 🔄 Phase 4 | Training 4 model algoritma | **BELUM** |
+| ⏳ Phase 5 | Evaluasi & visualisasi | Menunggu Phase 4 |
+| ⏳ Phase 6 | Analisis lanjutan | Menunggu Phase 4 |
+| ⏳ Phase 7 | Web App demo | Menunggu Phase 5 |
 
-**Cara pakai:**
-1. Clone repository ini
-2. Download dataset dari Google Drive di atas
-3. Letakkan `dataset_final_1500.csv` di folder project
-4. (Optional) Download & letakkan folder `models_indobert/` buat pakai IndoBERT
+---
 
-### Info Dataset
-- **Total Data:** 1,510 teks
-- **MANUSIA:** 750 teks (49.7%)
-- **AI:** 760 teks (50.3%)
+## 📦 Dataset
 
-### Sumber Data Manusia
-- IndoSum (Berita)
-- Reddit
-- Twitter
-- Kaggle Terrorism
-- Kaggle Marketplace
+### File Dataset Utama
 
-### Sumber Data AI
-- OpenRouter (3 model)
-- Groq (1 model)
-- HuggingFace (2 model)
+| File | Keterangan | Jumlah |
+|------|-----------|--------|
+| `dataset_skripsi_manusia_ai_1510.csv` | **Dataset Final** siap training | 1.510 teks |
+| `data_ai_all_clean.csv` | Raw data AI | 760 teks |
+| `data_manusia_all_clean.csv` | Raw data Manusia | 750 teks |
+| `dataset_ai_tidak_terpakai.csv` | Cadangan AI (tidak dipakai) | 500 teks |
 
-## Hasil Training
-
-| Model | Test Accuracy | Precision | Recall | F1-Score |
-|--------|---------------|-----------|--------|-----------|
-| Logistic Regression | **100.00%** | 100% | 100% | 100% |
-| SVM (RBF Kernel) | **100.00%** | 100% | 100% | 100% |
-| Random Forest | 98.68% | 97.4% | 100% | 98.7% |
-| IndoBERT | **100.00%** | 100% | 100% | 100% |
-
-## Struktur Project
+### Komposisi Dataset Final
 
 ```
-.
-├── dataset_final_1500.csv          # Dataset utama
-├── train_strict_cv.py              # Training dengan pipeline (no leakage)
-├── train_group_cv.py               # Training dengan group-based CV
-├── threshold_tuning.py             # Analisis threshold
-├── train_indobert.py               # Training IndoBERT
-├── eda_analysis.py                # Exploratory Data Analysis
-├── linguistic_analysis.py          # Analisis linguistik
-├── error_analysis.py               # Analisis error
-├── ablation_study.py               # Feature importance
-├── per_source_analysis.py          # Analisis per sumber
-├── app.py                         # Streamlit web app
-├── models_strict/                  # Model & hasil training
-│   ├── best_pipeline_logistic_regression.pkl
-│   ├── strict_cv_results.json
-│   ├── threshold_analysis.json
-│   └── group_cv_results.json
-├── models_indobert/                # Model IndoBERT
-│   ├── indobert_results.json
-│   └── final_model/
-└── visualizations/                 # Visualisasi
-    ├── roc_curve.png
-    ├── fnr_analysis.png
-    ├── threshold_metrics_comparison.png
-    └── ...
+dataset_skripsi_manusia_ai_1510.csv
+├── AI      : 760 teks (50.3%)
+└── MANUSIA : 750 teks (49.7%)
+    Total   : 1.510 teks
 ```
 
-## Cara Penggunaan
+### Sumber Data Manusia (750 teks)
 
-### 1. Training Model
+| Sumber | Jumlah | Jenis |
+|--------|--------|-------|
+| IndoSum | 249 | Artikel berita |
+| Kaggle Reddit Indonesia | 223 | Diskusi internet |
+| Kaggle Twitter PPKM | 161 | Komentar Twitter |
+| Kaggle Tweet Terrorism | 82 | Berita terorisme |
+| Kaggle YouTube Comments | 29 | Komentar YouTube |
+| Kaggle Marketplace Reviews | 6 | Review produk |
+
+### Sumber Data AI (760 teks)
+
+| Model | Jumlah |
+|-------|--------|
+| OpenRouter-Trinity | 100 |
+| OpenRouter-TNG-R1T-Chimera | 100 |
+| HF-Qwen3-Coder-Next | 100 |
+| OpenRouter-DeepSeekR1-0528 | 99 |
+| OpenRouter-GLM-4.5-Air | 82 |
+| Groq-GPT-OSS-120B | 80 |
+| OpenRouter-Step-3.5-Flash | 71 |
+| GPT_Casual | 50 |
+| Groq_Llama_3.3 | 48 |
+| HF-Kimi-K2.5 | 30 |
+
+---
+
+## 🧠 Algoritma yang Digunakan (4 Model)
+
+| No | Algoritma | Deskripsi |
+|----|-----------|-----------|
+| 1 | **Logistic Regression** | Cara paling simpel, menarik garis pemisah linier |
+| 2 | **SVM (RBF Kernel)** | Cari hyperplane pemisah paling optimal |
+| 3 | **Random Forest** | 100 pohon keputusan, hasil voting bersama |
+| 4 | **IndoBERT** | Transformer khusus Bahasa Indonesia, paling canggih |
+
+**Feature Extraction:** TF-IDF (5.000 fitur, unigram + bigram)
+
+---
+
+## 🗂️ Struktur Folder & File
+
+```
+📁 1_data/
+└── build_dataset.py          → Gabungkan AI + Manusia → dataset final ✅
+
+📁 2_training/
+├── train_strict_cv.py        → Training LR + SVM + RF (10-fold CV, no leakage)
+├── train_indobert.py         → Training IndoBERT (transformer)
+├── train_group_cv.py         → Validasi per sumber data (lebih ketat)
+└── hyperparameter_tuning.py  → Grid search parameter terbaik
+
+📁 3_evaluasi/
+├── eda_analysis.py           → Grafik distribusi, wordcloud, top words
+├── visualizations.py         → ROC curve, confusion matrix, learning curve
+├── linguistic_analysis.py    → Analisis linguistik AI vs Manusia
+├── compare_models.py         → Tabel perbandingan 4 model
+├── ablation_study.py         → Kontribusi fitur TF-IDF
+├── threshold_tuning.py       → Optimasi threshold confidence
+├── error_analysis.py         → Analisis teks salah prediksi
+├── ambiguous_analysis.py     → Analisis teks susah diklasifikasi
+├── per_source_analysis.py    → Akurasi per sumber data
+├── per_category_analysis.py  → Analisis per kategori
+└── external_validation.py    → Uji generalisasi ke data baru
+
+📁 4_tools/
+├── inference.py              → Prediksi teks baru via terminal
+└── save_and_inference.py     → Simpan model + prediksi
+```
+
+---
+
+## 🚀 Cara Menjalankan
+
+### Phase 4 — Training Model (Langkah Berikutnya)
 
 ```bash
-# Training dengan strict cross-validation (no leakage)
+# Step 1: Training LR + SVM + Random Forest
 python train_strict_cv.py
 
-# Training dengan group-based CV (validasi sumber)
-python train_group_cv.py
-
-# Threshold tuning
-python threshold_tuning.py
+# Step 2: Training IndoBERT
+python train_indobert.py
 ```
 
-### 2. Run Web App (Streamlit)
+### Phase 5 — Evaluasi & Visualisasi (setelah training)
 
 ```bash
-# Install streamlit jika belum
-pip install streamlit
-
-# Jalankan aplikasi
-streamlit run app.py
+python eda_analysis.py
+python visualizations.py
+python linguistic_analysis.py
+python compare_models.py
+python ablation_study.py
+python threshold_tuning.py
+python error_analysis.py
+python per_source_analysis.py
 ```
 
-### 3. Prediksi dengan Model
+### Prediksi Teks Baru
 
 ```python
 import joblib
 
-# Load model
+# Load model pipeline
 pipeline = joblib.load('models_strict/best_pipeline_logistic_regression.pkl')
 
 # Prediksi
 text = "Masukkan teks di sini..."
 label = pipeline.predict([text])[0]
-label_name = "MANUSIA" if label == 0 else "AI"
 proba = pipeline.predict_proba([text])[0]
 
-print(f"Prediksi: {label_name}")
+print(f"Prediksi : {'AI' if label == 1 else 'MANUSIA'}")
 print(f"Confidence: {max(proba)*100:.2f}%")
 ```
 
-## Requirements
+---
 
-```
-pandas
-numpy
-scikit-learn
-joblib
-matplotlib
-seaborn
-wordcloud
-streamlit
-torch
-transformers
-```
+## 📋 Requirements
 
-Install:
 ```bash
-pip install -r requirements.txt
+pip install pandas numpy scikit-learn joblib matplotlib seaborn wordcloud
+pip install torch transformers  # untuk IndoBERT
+pip install kagglehub           # untuk download dataset
 ```
 
-## Hasil Analisis
+---
 
-### Cross-Validation Results (Strict CV - No Leakage)
-- Logistic Regression: **99.67% ± 0.41%**
-- SVM (RBF): **99.67% ± 0.41%**
-- Random Forest: **98.59% ± 0.91%**
+## 📁 Folder Struktur
 
-### Group-Based CV (Validasi Sumber)
-- SVM: **96.72%** (gap -2.95% dari standard CV)
-- Logistic Regression: **87.66%** (gap -12.01%)
-- Random Forest: **82.92%** (gap -15.75%)
+```
+.
+├── dataset_skripsi_manusia_ai_1510.csv   ← Dataset final
+├── data_ai_all_clean.csv                 ← Raw AI data
+├── data_manusia_all_clean.csv            ← Raw Manusia data
+├── dataset_ai_tidak_terpakai.csv         ← Cadangan AI
+├── backup_hasil_lama/                    ← Hasil training sebelumnya
+├── [script python...]
+└── README.md
+```
 
-### Threshold Recommendations
-- **Default (0.5):** Buat penggunaan umum
-- **Balanced (0.55):** Rekomendasi buat production
-- **Conservative (0.60):** Buat keamanan tinggi (FNR lebih rendah)
+---
 
-## Author
+## 👤 Author
 
-Dibuat buat Skripsi Sarjana Teknik Informatika
-
-## Lisensi
-
-Project ini hanya buat keperluan edukasi dan penelitian skripsi.
+Skripsi Sarjana Teknik Informatika
+Dataset: 1.510 teks Bahasa Indonesia (760 AI + 750 Manusia)
