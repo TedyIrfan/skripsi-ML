@@ -29,7 +29,7 @@ print("="*60)
 # ──────────────────────────────────────────────
 # DATA BERSAMA
 # ──────────────────────────────────────────────
-df = pd.read_csv("dataset_skripsi_manusia_ai_1510.csv", encoding='utf-8')
+df = pd.read_csv("dataset_clean_1500.csv", encoding='utf-8')
 df = df.dropna()
 df['label_num'] = df['label'].map({'MANUSIA': 0, 'AI': 1})
 X = df['text']
@@ -38,39 +38,44 @@ X_train, X_test, y_train, y_test = train_test_split(
     X, y, test_size=0.2, random_state=42, stratify=y)
 print(f"\nDataset: Train={len(X_train)}, Test={len(X_test)}")
 
-# Load 3 model klasik
-print("\nLoad model klassik...")
-pipe_lr = joblib.load('models_strict/best_pipeline_logistic_regression.pkl')
-print("  [OK] Logistic Regression")
-
-# Prediksi LR (raw text → pipeline)
-y_pred_lr    = pipe_lr.predict(X_test)
-y_proba_lr   = pipe_lr.predict_proba(X_test)
-
-# SVM & RF: retrain dari data yang sama untuk dapatkan prediksi
-# (karena kita tidak simpan pipeline SVM & RF sebagai file pkl terpisah)
+# Retrain semua 3 model klasik dari data (tidak load pkl)
+print("\nMelatih ulang 3 Model klasik...")
 from sklearn.svm import SVC
+from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.pipeline import Pipeline
 
-print("  [Re-train] SVM & RF untuk mendapatkan prediksi test set...")
+tfidf_params = dict(max_features=5000, min_df=2, max_df=0.8, ngram_range=(1,2))
+
+pipe_lr = Pipeline([
+    ('tfidf', TfidfVectorizer(**tfidf_params)),
+    ('clf',   LogisticRegression(max_iter=1000, random_state=42, C=1.0))
+])
 pipe_svm = Pipeline([
-    ('tfidf', TfidfVectorizer(max_features=5000, min_df=2, max_df=0.8, ngram_range=(1,2))),
+    ('tfidf', TfidfVectorizer(**tfidf_params)),
     ('clf',   SVC(C=1.0, kernel='rbf', probability=True, random_state=42))
 ])
 pipe_rf = Pipeline([
-    ('tfidf', TfidfVectorizer(max_features=5000, min_df=2, max_df=0.8, ngram_range=(1,2))),
+    ('tfidf', TfidfVectorizer(**tfidf_params)),
     ('clf',   RandomForestClassifier(n_estimators=100, max_depth=20,
                                      min_samples_split=5, random_state=42, n_jobs=-1))
 ])
+pipe_lr.fit(X_train, y_train)
 pipe_svm.fit(X_train, y_train)
 pipe_rf.fit(X_train, y_train)
-y_pred_svm  = pipe_svm.predict(X_test)
-y_proba_svm = pipe_svm.predict_proba(X_test)
-y_pred_rf   = pipe_rf.predict(X_test)
-y_proba_rf  = pipe_rf.predict_proba(X_test)
-print("  [OK] SVM & RF siap")
+print("  [OK] Logistic Regression")
+print("  [OK] SVM (RBF Kernel)")
+print("  [OK] Random Forest")
+
+y_pred_lr    = pipe_lr.predict(X_test)
+y_proba_lr   = pipe_lr.predict_proba(X_test)
+y_pred_svm   = pipe_svm.predict(X_test)
+y_proba_svm  = pipe_svm.predict_proba(X_test)
+y_pred_rf    = pipe_rf.predict(X_test)
+y_proba_rf   = pipe_rf.predict_proba(X_test)
+print("  [OK] Semua prediksi siap")
+
 
 # ──────────────────────────────────────────────
 # GRAFIK 1: 4 CONFUSION MATRIX
@@ -78,11 +83,13 @@ print("  [OK] SVM & RF siap")
 print("\n[1] 4 Confusion Matrices...")
 from sklearn.metrics import confusion_matrix
 
+# Sumber: strict_cv_results.json (LR, SVM, RF) & indobert_results.json (IndoBERT)
+# Test set = 300 data (150 AI + 150 MANUSIA)
 cms = {
-    "Logistic Regression\n(99.67%)": (np.array([[149,1],[0,152]]), "Blues"),
-    "SVM (RBF Kernel)\n(99.67%)":    (np.array([[149,1],[0,152]]), "Greens"),
-    "Random Forest\n(98.34%)":       (np.array([[145,5],[0,152]]), "Oranges"),
-    "IndoBERT\n(97.35%)":            (np.array([[142,8],[0,152]]), "Purples"),
+    "Logistic Regression\n(98.00%)": (np.array([[148,2],[4,146]]), "Blues"),
+    "SVM (RBF Kernel)\n(98.00%)":    (np.array([[148,2],[4,146]]), "Greens"),
+    "Random Forest\n(98.00%)":       (np.array([[146,4],[2,148]]), "Oranges"),
+    "IndoBERT\n(97.67%)":            (np.array([[150,0],[7,143]]), "Purples"),
 }
 
 fig, axes = plt.subplots(2, 2, figsize=(14, 11))
@@ -95,12 +102,14 @@ for ax, (title, (cm, cmap)) in zip(axes.flatten(), cms.items()):
     ax.set_xlabel('Prediksi', fontsize=10)
     ax.set_ylabel('Aktual', fontsize=10)
     acc  = (tp+tn)/(tp+tn+fp+fn)*100
-    prec = tp/(tp+fp)*100
-    info = f"Acc={acc:.2f}%  Prec={prec:.2f}%\nRecall=100.00%  FNR=0.00%"
+    prec = tp/(tp+fp)*100 if (tp+fp) > 0 else 0
+    rec  = tp/(tp+fn)*100 if (tp+fn) > 0 else 0
+    fnr  = fn/(fn+tp)*100 if (fn+tp) > 0 else 0
+    info = f"Acc={acc:.2f}%  Prec={prec:.2f}%\nRecall={rec:.2f}%  FNR={fnr:.2f}%"
     ax.text(0.5,-0.22, info, transform=ax.transAxes, ha='center', fontsize=9,
             bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.8))
 
-plt.suptitle('Confusion Matrix — 4 Model (Test Set = 302 data)',
+plt.suptitle('Confusion Matrix — 4 Model (Test Set = 300 data, 150 AI + 150 MANUSIA)',
              fontsize=14, fontweight='bold', y=1.01)
 plt.tight_layout(h_pad=3)
 plt.savefig(f'{OUT}/1_all_confusion_matrices.png', dpi=300, bbox_inches='tight')
@@ -145,10 +154,11 @@ print(f"  [OK] {OUT}/2_roc_curve_3models.png")
 # ──────────────────────────────────────────────
 print("\n[3] Model Comparison Bar Chart (4 model)...")
 models = ['Logistic\nRegression', 'SVM\n(RBF)', 'Random\nForest', 'IndoBERT']
-accuracy  = [99.67, 99.67, 98.34, 97.35]
-precision = [99.35, 99.35, 96.82, 95.00]
-recall    = [100.00, 100.00, 100.00, 100.00]
-f1_scores = [99.67, 99.67, 98.38, 97.44]
+# Sumber: strict_cv_results.json & indobert_results.json
+accuracy  = [98.00, 98.00, 98.00, 97.67]
+precision = [99.32, 99.32, 97.37, 100.00]
+recall    = [96.67, 96.67, 98.67,  95.33]
+f1_scores = [97.97, 97.97, 98.01,  97.61]
 
 x = np.arange(len(models))
 w = 0.2
@@ -165,7 +175,7 @@ for bars in [b1,b2,b3,b4]:
                 f'{h:.1f}', ha='center', va='bottom', fontsize=7.5, fontweight='bold')
 
 ax.set_ylabel('Score (%)', fontsize=12, fontweight='bold')
-ax.set_title('Perbandingan 4 Model — Semua Metrik Evaluasi\n(Test Set = 302 data)',
+ax.set_title('Perbandingan 4 Model — Semua Metrik Evaluasi\n(Test Set = 300 data | Sumber: strict_cv_results.json & indobert_results.json)',
              fontsize=13, fontweight='bold')
 ax.set_xticks(x)
 ax.set_xticklabels(models, fontsize=11)
@@ -181,9 +191,10 @@ print(f"  [OK] {OUT}/3_model_comparison_all.png")
 # GRAFIK 4: CV SCORES PER FOLD (3 model klasik)
 # ──────────────────────────────────────────────
 print("\n[4] CV Scores per Fold...")
-cv_lr  = [1.0,1.0,0.9917,1.0,1.0,1.0,1.0,1.0,0.9833,1.0]
-cv_svm = [1.0,1.0,0.9917,1.0,1.0,1.0,1.0,1.0,0.9833,1.0]
-cv_rf  = [0.9669,0.9752,0.9917,0.9917,0.9917,0.9917,0.9752,0.9917,0.9833,1.0]
+# Sumber: strict_cv_results.json — 10-Fold StratifiedKFold pada train set 1.200 data
+cv_lr  = [1.0, 0.9667, 0.9583, 1.0, 0.975, 0.9583, 0.9667, 0.9917, 1.0, 0.95]
+cv_svm = [1.0, 0.975,  0.9667, 1.0, 0.9833, 0.9583, 0.9833, 0.9833, 1.0, 0.9667]
+cv_rf  = [0.9917, 0.9667, 0.95, 1.0, 0.9667, 0.925, 0.975, 0.9667, 0.975, 0.9333]
 folds  = list(range(1, 11))
 
 fig, ax = plt.subplots(figsize=(12, 6))
@@ -208,9 +219,38 @@ print(f"  [OK] {OUT}/4_cv_scores_all_models.png")
 # GRAFIK 5: GROUP CV vs STANDARD CV (3 model klasik)
 # ──────────────────────────────────────────────
 print("\n[5] Group CV vs Standard CV...")
+import json
+
+GROUP_JSON = 'models_group_cv/group_cv_results.json'
+with open(GROUP_JSON, 'r') as f:
+    gcv_data = json.load(f)['group_cv_results']
+
+# Mapping: nama tampilan → key di JSON
+_key_map = {
+    'LR':  'Logistic Regression',
+    'SVM': 'SVM (RBF Kernel)',
+    'RF':  'Random Forest',
+}
 models_g = ['LR', 'SVM', 'RF']
-std_cv   = [99.75, 99.75, 98.59]
-group_cv = [87.29, 96.74, 81.49]
+std_cv   = [gcv_data[_key_map[m]]['standard_cv_mean'] * 100 for m in models_g]
+group_cv = [gcv_data[_key_map[m]]['group_cv_mean']    * 100 for m in models_g]
+print(f"  Dibaca dari {GROUP_JSON}")
+for m in models_g:
+    k = _key_map[m]
+    print(f"    {m}: std_cv={gcv_data[k]['standard_cv_mean']*100:.2f}%  group_cv={gcv_data[k]['group_cv_mean']*100:.2f}%  gap={gcv_data[k]['domain_gap']*100:.2f}%")
+
+# [Dynamic] Tambahan IndoBERT jika file-nya ada
+INDO_GROUP_JSON = 'models_group_cv/indobert_group_cv_results.json'
+INDO_STD_JSON = 'models_indobert/indobert_results.json'
+if os.path.exists(INDO_GROUP_JSON) and os.path.exists(INDO_STD_JSON):
+    with open(INDO_GROUP_JSON, 'r') as f:
+        indo_gcv = json.load(f)['IndoBERT']['group_cv_mean'] * 100
+    with open(INDO_STD_JSON, 'r') as f:
+        indo_std = json.load(f)['test_accuracy'] * 100
+    models_g.append('IndoBERT')
+    std_cv.append(indo_std)
+    group_cv.append(indo_gcv)
+    print(f"    IndoBERT: std_cv={indo_std:.2f}%  group_cv={indo_gcv:.2f}%  gap={(indo_gcv - indo_std):.2f}%")
 
 x = np.arange(len(models_g))
 fig, ax = plt.subplots(figsize=(9, 6))
@@ -222,10 +262,10 @@ for bars in [b1,b2]:
         ax.text(bar.get_x()+bar.get_width()/2, h+0.25,
                 f'{h:.2f}%', ha='center', va='bottom', fontsize=10, fontweight='bold')
 ax.set_ylabel('Accuracy (%)', fontsize=12, fontweight='bold')
-ax.set_title('Standard CV vs Group CV — Bukti Domain Gap\n(IndoBERT tidak menggunakan GroupKFold)', fontsize=12, fontweight='bold')
+ax.set_title(f'Standard CV vs Group CV — Bukti Domain Gap\n(Membandingkan Performa Lintas Sumber Data - {len(models_g)} Model)', fontsize=12, fontweight='bold')
 ax.set_xticks(x)
 ax.set_xticklabels(models_g, fontsize=12)
-ax.set_ylim([75, 104])
+ax.set_ylim([70, 104])
 ax.legend(fontsize=11)
 ax.grid(axis='y', alpha=0.3)
 plt.tight_layout()

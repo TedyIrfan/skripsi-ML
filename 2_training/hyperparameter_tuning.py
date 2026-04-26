@@ -22,8 +22,8 @@ print("="*60)
 
 # Load data
 print("\n[1] Load dataset...")
-df = pd.read_csv("dataset_skripsi_manusia_ai_1510.csv", encoding='utf-8')
-df = df.dropna()
+df = pd.read_csv("dataset_clean_1500.csv", encoding='utf-8')
+df = df.dropna(subset=['text', 'label'])
 print(f"     Total data: {len(df)}")
 
 # Preprocessing
@@ -125,11 +125,11 @@ print("\n" + "="*60)
 print("PERBANDINGAN: BASELINE vs TUNED")
 print("="*60)
 
-baseline_acc = 0.9834  # hasil RF dari train_strict_cv.py
+baseline_acc = 0.9800  # hasil RF dari train_strict_cv.py
 
 print(f"\nBaseline RF (dari train_strict_cv.py):")
 print(f"  Accuracy: {baseline_acc*100:.2f}%")
-print(f"  Params  : n_estimators=100, max_depth=20, min_samples_split=5 (default)")
+print(f"  Params  : n_estimators=100, max_depth=20, min_samples_split=5, min_samples_leaf=2 (default/baseline)")
 
 print(f"\nTuned RF (setelah GridSearch):")
 print(f"  Accuracy: {accuracy*100:.2f}%")

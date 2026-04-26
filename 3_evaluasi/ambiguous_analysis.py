@@ -4,14 +4,26 @@ import numpy as np
 import joblib
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.svm import SVC
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.pipeline import Pipeline
+import os
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import seaborn as sns
 import warnings
 warnings.filterwarnings('ignore')
+
+OUT = "hasil_phase5/5_ambiguous_analysis"
+os.makedirs(OUT, exist_ok=True)
 
 print("ANALISIS TEKS AMBIGU (PROBABILITAS 40-60%)")
 
 # Load dataset dulu
 print("\nLoad dataset...")
-df = pd.read_csv("dataset_skripsi_manusia_ai_1510.csv", encoding='utf-8')
+df = pd.read_csv("dataset_clean_1500.csv", encoding='utf-8')
 df = df.dropna()
 
 # Mapping label
@@ -20,24 +32,40 @@ reverse_label_mapping = {0: 'MANUSIA', 1: 'AI'}
 df['label_num'] = df['label'].map(label_mapping)
 
 # Siapin data
-X = df['text'].tolist()
-y = df['label_num'].tolist()
+X = df['text']
+y = df['label_num'].values          # numpy array — wajib untuk boolean indexing
 original_labels = df['label'].tolist()
 
 print(f"     Total data: {len(df)}")
 
-# Load model dan vectorizer
-print("\nLoad model dan vectorizer...")
-model = joblib.load('models_strict/best_pipeline_logistic_regression.pkl')
-vectorizer = joblib.load('models_strict/best_pipeline_logistic_regression.pkl')
+# Train 3 model pipeline (konsisten dengan train_strict_cv.py)
+print("\nTrain 3 model pipeline (LR, SVM, RF)...")
+X_train_all, X_test_all, y_train_all, y_test_all = train_test_split(
+    df['text'], df['label_num'], test_size=0.2, random_state=42, stratify=df['label_num']
+)
 
-# Transform dan prediksi
-print("\nTransform dan predict...")
-X_tfidf = vectorizer.transform(X)
+tfidf_params = dict(max_features=5000, min_df=2, max_df=0.8, ngram_range=(1, 2))
+pipe_lr = Pipeline([('tfidf', TfidfVectorizer(**tfidf_params)),
+                    ('clf', LogisticRegression(max_iter=1000, random_state=42, C=1.0))])
+pipe_svm = Pipeline([('tfidf', TfidfVectorizer(**tfidf_params)),
+                     ('clf', SVC(C=1.0, kernel='rbf', probability=True, random_state=42))])
+pipe_rf  = Pipeline([('tfidf', TfidfVectorizer(**tfidf_params)),
+                     ('clf', RandomForestClassifier(n_estimators=100, max_depth=20,
+                                                    min_samples_split=5, random_state=42, n_jobs=-1))])
+pipe_lr.fit(X_train_all, y_train_all)
+pipe_svm.fit(X_train_all, y_train_all)
+pipe_rf.fit(X_train_all, y_train_all)
+print("  [OK] LR, SVM, RF pipeline trained")
 
-# Prediksi dan ambil probabilitas
-y_pred = model.predict(X_tfidf)
-y_proba = model.predict_proba(X_tfidf)
+# Gunakan LR sebagai model utama untuk analisis ambigu (representatif)
+# Semua model diprediksi untuk perbandingan di grafik
+models = {'LR': pipe_lr, 'SVM': pipe_svm, 'RF': pipe_rf}
+
+# Prediksi seluruh dataset dengan LR (untuk analisis ambigu)
+print("\nPredict (full dataset via LR untuk analisis ambigu)...")
+pipeline = pipe_lr  # alias untuk kompatibilitas code di bawah
+y_pred = pipe_lr.predict(df['text'])
+y_proba = pipe_lr.predict_proba(df['text'])
 
 # Ambil probabilitas AI
 print("\n" + "="*70)
@@ -226,20 +254,20 @@ results_df = pd.DataFrame({
 })
 
 # Simpen ke CSV
-results_df.to_csv('ambiguous_analysis_results.csv', index=False, encoding='utf-8')
-print("\n[OK] Export: ambiguous_analysis_results.csv")
+results_df.to_csv(f'{OUT}/ambiguous_analysis_results.csv', index=False, encoding='utf-8')
+print(f"\n[OK] Export: {OUT}/ambiguous_analysis_results.csv")
 
 # Export teks ambigu aja
 ambiguous_df = results_df[results_df['is_ambiguous']].copy()
 ambiguous_df = ambiguous_df.sort_values('proba_ai', key=lambda x: abs(x - 0.5))
-ambiguous_df.to_csv('ambiguous_texts_only.csv', index=False, encoding='utf-8')
-print(f"[OK] Export: ambiguous_texts_only.csv ({len(ambiguous_df)} teks)")
+ambiguous_df.to_csv(f'{OUT}/ambiguous_texts_only.csv', index=False, encoding='utf-8')
+print(f"[OK] Export: {OUT}/ambiguous_texts_only.csv ({len(ambiguous_df)} teks)")
 
 # Export teks yang benar tapi rendah
 low_conf_df = results_df[(results_df['is_correct']) & (results_df['confidence'] < 0.6)].copy()
 low_conf_df = low_conf_df.sort_values('confidence')
-low_conf_df.to_csv('low_confidence_correct.csv', index=False, encoding='utf-8')
-print(f"[OK] Export: low_confidence_correct.csv ({len(low_conf_df)} teks)")
+low_conf_df.to_csv(f'{OUT}/low_confidence_correct.csv', index=False, encoding='utf-8')
+print(f"[OK] Export: {OUT}/low_confidence_correct.csv ({len(low_conf_df)} teks)")
 
 print("\n" + "="*70)
 print("ANALISIS TEKS AMBIGU SELESAI!")
@@ -261,3 +289,109 @@ Interpretasi:
 - Semakin kecil std dev = semakin yakin model
 - Semakin banyak teks ambigu = semakin sulit membedakan
 """)
+
+# ======================================================
+# VISUALISASI
+# ======================================================
+print("\nMembuat visualisasi analisis ambigu...")
+plt.style.use('seaborn-v0_8-whitegrid')
+
+# GRAFIK 1: Distribusi Probabilitas AI
+fig, ax = plt.subplots(figsize=(12, 6))
+ax.hist(proba_ai, bins=50, color='#3498db', alpha=0.7, edgecolor='white')
+ax.axvspan(0.45, 0.55, alpha=0.25, color='#e74c3c', label='Zona Ambigu (45-55%)')
+ax.axvline(x=0.5, color='red', linestyle='--', linewidth=2, label='Threshold 0.5')
+ax.set_xlabel('Probabilitas AI', fontsize=12, fontweight='bold')
+ax.set_ylabel('Jumlah Teks', fontsize=12, fontweight='bold')
+ax.set_title('Distribusi Probabilitas Prediksi AI\n(Zona merah = teks ambigu)', fontsize=13, fontweight='bold')
+ax.legend(fontsize=11)
+ax.grid(alpha=0.3)
+plt.tight_layout()
+plt.savefig(f'{OUT}/1_distribusi_probabilitas.png', dpi=300, bbox_inches='tight')
+plt.close()
+print(f"  [OK] {OUT}/1_distribusi_probabilitas.png")
+
+# GRAFIK 2: Confidence Distribution — Benar vs Salah
+fig, ax = plt.subplots(figsize=(12, 6))
+correct_conf = [max(proba_ai[i], 1 - proba_ai[i]) for i in range(len(y)) if y_pred[i] == y[i]]
+wrong_conf = [max(proba_ai[i], 1 - proba_ai[i]) for i in range(len(y)) if y_pred[i] != y[i]]
+ax.hist(correct_conf, bins=40, alpha=0.7, color='#2ecc71', label=f'Prediksi Benar ({len(correct_conf)})', edgecolor='white')
+if wrong_conf:
+    ax.hist(wrong_conf, bins=20, alpha=0.7, color='#e74c3c', label=f'Prediksi Salah ({len(wrong_conf)})', edgecolor='white')
+ax.set_xlabel('Confidence', fontsize=12, fontweight='bold')
+ax.set_ylabel('Jumlah Teks', fontsize=12, fontweight='bold')
+ax.set_title('Distribusi Confidence — Prediksi Benar vs Salah', fontsize=13, fontweight='bold')
+ax.legend(fontsize=11)
+ax.grid(alpha=0.3)
+plt.tight_layout()
+plt.savefig(f'{OUT}/2_confidence_benar_vs_salah.png', dpi=300, bbox_inches='tight')
+plt.close()
+print(f"  [OK] {OUT}/2_confidence_benar_vs_salah.png")
+
+# GRAFIK 3: Probability per label (AI vs Manusia)
+fig, ax = plt.subplots(figsize=(12, 6))
+ai_probs = proba_ai[y == 1]
+human_probs = proba_ai[y == 0]
+ax.hist(human_probs, bins=40, alpha=0.6, color='#3498db', label=f'Manusia (n={len(human_probs)})', edgecolor='white')
+ax.hist(ai_probs, bins=40, alpha=0.6, color='#e74c3c', label=f'AI (n={len(ai_probs)})', edgecolor='white')
+ax.axvline(x=0.5, color='black', linestyle='--', linewidth=2, label='Threshold 0.5')
+ax.axvspan(0.45, 0.55, alpha=0.15, color='orange', label='Zona Ambigu')
+ax.set_xlabel('Probabilitas AI', fontsize=12, fontweight='bold')
+ax.set_ylabel('Jumlah Teks', fontsize=12, fontweight='bold')
+ax.set_title('Distribusi Probabilitas AI per Label Asli\n(Overlap = zona sulit dibedakan)', fontsize=13, fontweight='bold')
+ax.legend(fontsize=11)
+ax.grid(alpha=0.3)
+plt.tight_layout()
+plt.savefig(f'{OUT}/3_probabilitas_per_label.png', dpi=300, bbox_inches='tight')
+plt.close()
+print(f"  [OK] {OUT}/3_probabilitas_per_label.png")
+
+# GRAFIK 4: Perbandingan jumlah teks ambigu & akurasi 3 model
+print("\n[4] Perbandingan 3 Model — Jumlah Ambigu & Akurasi...")
+model_names  = ['LR', 'SVM', 'RF']
+model_colors = ['#2196F3', '#4CAF50', '#FF9800']
+
+ambig_counts = []
+model_accs   = []
+for name, pipe in models.items():
+    proba_tmp      = pipe.predict_proba(df['text'])[:, 1]
+    pred_tmp       = pipe.predict(df['text'])
+    ambig_mask_tmp = (proba_tmp >= 0.45) & (proba_tmp <= 0.55)
+    ambig_counts.append(int(ambig_mask_tmp.sum()))
+    model_accs.append((pred_tmp == y).mean() * 100)
+
+fig, axes = plt.subplots(1, 2, figsize=(13, 6))
+
+# Panel kiri: Jumlah teks ambigu
+bars = axes[0].bar(model_names, ambig_counts, color=model_colors, alpha=0.85, edgecolor='white', width=0.5)
+for bar, val in zip(bars, ambig_counts):
+    axes[0].text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.3,
+                 str(val), ha='center', fontsize=13, fontweight='bold')
+axes[0].set_title('Jumlah Teks Ambigu (zona 45-55%)\nper Model — lebih sedikit = lebih yakin',
+                  fontsize=11, fontweight='bold')
+axes[0].set_ylabel('Jumlah Teks Ambigu', fontsize=11)
+axes[0].grid(axis='y', alpha=0.3)
+
+# Panel kanan: Akurasi keseluruhan
+bars2 = axes[1].bar(model_names, model_accs, color=model_colors, alpha=0.85, edgecolor='white', width=0.5)
+for bar, val in zip(bars2, model_accs):
+    axes[1].text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.1,
+                 f'{val:.2f}%', ha='center', fontsize=13, fontweight='bold')
+axes[1].set_title('Akurasi Keseluruhan (Full Dataset)\nLR vs SVM vs RF', fontsize=11, fontweight='bold')
+axes[1].set_ylabel('Akurasi (%)', fontsize=11)
+axes[1].set_ylim([95, 103])
+axes[1].grid(axis='y', alpha=0.3)
+
+plt.suptitle('Perbandingan 3 Model — Zona Ambigu & Akurasi', fontsize=13, fontweight='bold')
+plt.tight_layout()
+plt.savefig(f'{OUT}/4_perbandingan_3model_ambigu.png', dpi=300, bbox_inches='tight')
+plt.close()
+print(f"  [OK] {OUT}/4_perbandingan_3model_ambigu.png")
+
+print(f"\nSemua grafik tersimpan di: {OUT}/")
+print("  1_distribusi_probabilitas.png       -> Zona ambigu pada distribusi (LR)")
+print("  2_confidence_benar_vs_salah.png     -> Confidence saat benar vs salah (LR)")
+print("  3_probabilitas_per_label.png        -> Overlap AI vs Manusia (LR)")
+print("  4_perbandingan_3model_ambigu.png    -> Perbandingan LR, SVM, RF")
+print("Analisis Ambigu Selesai!")
+

@@ -11,7 +11,9 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import os
 
-os.makedirs("hasil_phase5", exist_ok=True)
+OUT = "hasil_phase5/1_visualisasi_utama"
+os.makedirs(OUT, exist_ok=True)
+
 
 # Data confusion matrix dari hasil training (sudah diverifikasi)
 # Format: [[TN, FP], [FN, TP]]
@@ -67,10 +69,10 @@ for idx, (title, data) in enumerate(models_data.items()):
 plt.suptitle('Confusion Matrix — Perbandingan 4 Model\n(Test Set = 302 data)',
              fontsize=14, fontweight='bold', y=1.01)
 plt.tight_layout(h_pad=3)
-plt.savefig("hasil_phase5/7_all_confusion_matrices.png", dpi=300, bbox_inches='tight')
+plt.savefig(f"{OUT}/0_all_confusion_matrices_4model.png", dpi=300, bbox_inches='tight')
 plt.close()
 
-print("[OK] hasil_phase5/7_all_confusion_matrices.png")
+print(f"[OK] {OUT}/0_all_confusion_matrices_4model.png")
 print("\nRingkasan:")
 print(f"  LR  : TN=149, FP=1,  FN=0, TP=152  → FNR=0%")
 print(f"  SVM : TN=149, FP=1,  FN=0, TP=152  → FNR=0%")

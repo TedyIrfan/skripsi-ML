@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(PYTHONIOENCODING=utf-8 python 3_evaluasi/linguistic_analysis.py)"
+    ]
+  }
+}

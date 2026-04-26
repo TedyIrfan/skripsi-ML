@@ -17,15 +17,20 @@ import warnings
 warnings.filterwarnings('ignore')
 
 try:  # Optional: matplotlib for visualization
+    import matplotlib
+    matplotlib.use('Agg')
     import matplotlib.pyplot as plt
     HAS_MATPLOTLIB = True
 except ImportError:
     HAS_MATPLOTLIB = False
     print("Note: matplotlib not found, skipping plots")
 
+OUT_VIS = "hasil_phase5/10_threshold_tuning"
+os.makedirs(OUT_VIS, exist_ok=True)
+
 print("Threshold Tuning Analysis")
 print("\nLoad dataset...")
-df = pd.read_csv("dataset_skripsi_manusia_ai_1510.csv", encoding='utf-8')  # Load dataset
+df = pd.read_csv("dataset_clean_1500.csv", encoding='utf-8')  # Load dataset
 df = df.dropna(subset=['text', 'label'])
 print(f"    Total data: {len(df)}")
 
@@ -173,7 +178,7 @@ for thresh in fine_thresholds:
 if HAS_MATPLOTLIB:
     print("\nGenerating Visualizations")
 
-    os.makedirs('visualizations', exist_ok=True)
+    os.makedirs(OUT_VIS, exist_ok=True)
 
     fig, axes = plt.subplots(2, 2, figsize=(14, 10))  # Plot 1: Threshold vs Metrics
 
@@ -217,8 +222,8 @@ if HAS_MATPLOTLIB:
     axes[1, 1].grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig('visualizations/threshold_metrics_comparison.png', dpi=150)
-    print("    Saved: visualizations/threshold_metrics_comparison.png")
+    plt.savefig(f'{OUT_VIS}/1_threshold_metrics_comparison.png', dpi=300, bbox_inches='tight')
+    print(f"    Saved: {OUT_VIS}/1_threshold_metrics_comparison.png")
     plt.close()
 
     fig, ax = plt.subplots(figsize=(10, 6))  # Plot 2: FNR Analysis
@@ -239,8 +244,8 @@ if HAS_MATPLOTLIB:
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig('visualizations/fnr_analysis.png', dpi=150)
-    print("    Saved: visualizations/fnr_analysis.png")
+    plt.savefig(f'{OUT_VIS}/2_fnr_analysis.png', dpi=300, bbox_inches='tight')
+    print(f"    Saved: {OUT_VIS}/2_fnr_analysis.png")
     plt.close()
 
     fig, ax = plt.subplots(figsize=(8, 8))  # Plot 3: ROC Curve
@@ -259,8 +264,8 @@ if HAS_MATPLOTLIB:
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig('visualizations/roc_curve.png', dpi=150)
-    print("    Saved: visualizations/roc_curve.png")
+    plt.savefig(f'{OUT_VIS}/3_roc_curve.png', dpi=300, bbox_inches='tight')
+    print(f"    Saved: {OUT_VIS}/3_roc_curve.png")
     plt.close()
 
 print("\nSaving Threshold Analysis Results")

@@ -12,6 +12,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegression
 from sklearn.svm import SVC
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -29,7 +30,7 @@ print(f"Output: {OUT}/")
 print("="*60)
 
 # Load data
-df = pd.read_csv("dataset_skripsi_manusia_ai_1510.csv", encoding='utf-8')
+df = pd.read_csv("dataset_clean_1500.csv", encoding='utf-8')
 df = df.dropna()
 df['label_num'] = df['label'].map({'MANUSIA': 0, 'AI': 1})
 X = df['text']
@@ -39,8 +40,11 @@ X_train, X_test, y_train, y_test = train_test_split(
 print(f"\nTest set: {len(X_test)} data")
 
 # Load / train semua model
-print("\nLoad & train model...")
-pipe_lr = joblib.load('models_strict/best_pipeline_logistic_regression.pkl')
+print("\nTrain model dari awal (konsisten dengan train_strict_cv.py)...")
+pipe_lr = Pipeline([
+    ('tfidf', TfidfVectorizer(max_features=5000, min_df=2, max_df=0.8, ngram_range=(1,2))),
+    ('clf', LogisticRegression(max_iter=1000, random_state=42, C=1.0))
+])
 pipe_svm = Pipeline([
     ('tfidf', TfidfVectorizer(max_features=5000, min_df=2, max_df=0.8, ngram_range=(1,2))),
     ('clf', SVC(C=1.0, kernel='rbf', probability=True, random_state=42))
@@ -52,6 +56,7 @@ pipe_rf = Pipeline([
 ])
 pipe_svm.fit(X_train, y_train)
 pipe_rf.fit(X_train, y_train)
+pipe_lr.fit(X_train, y_train)
 print("  [OK] LR, SVM, RF siap")
 
 models = {

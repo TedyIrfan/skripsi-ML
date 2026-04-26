@@ -31,7 +31,7 @@ print("EVALUASI 2 — EDA DATASET")
 print(f"Output: {OUT}/")
 print("="*60)
 
-df = pd.read_csv("dataset_skripsi_manusia_ai_1510.csv", encoding='utf-8')
+df = pd.read_csv("dataset_clean_1500.csv", encoding='utf-8')
 df = df.dropna()
 df['text_length'] = df['text'].apply(len)
 df['word_count']  = df['text'].apply(lambda x: len(x.split()))
@@ -111,7 +111,7 @@ for ax, col, title in zip(axes,
     ['Panjang Teks (karakter)','Jumlah Kata']):
     data = [df[df['label']=='AI'][col].values,
             df[df['label']=='MANUSIA'][col].values]
-    bp = ax.boxplot(data, labels=['AI','Manusia'], patch_artist=True,
+    bp = ax.boxplot(data, tick_labels=['AI','Manusia'], patch_artist=True,
                     medianprops=dict(color='black', linewidth=2))
     bp['boxes'][0].set_facecolor('#e74c3c')
     bp['boxes'][0].set_alpha(0.7)

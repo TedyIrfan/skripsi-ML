@@ -1,0 +1,43 @@
+{
+  "model": "IndoBERT (indobenchmark/indobert-base-p1)",
+  "model_path": "models_indobert/final_model",
+  "device": "cuda",
+  "max_length": 128,
+  "total_teks_uji": 3,
+  "akurasi_inferensi": "1/3",
+  "hasil": [
+    {
+      "id": 1,
+      "deskripsi": "Teks formal + kata baku (gaya khas AI)",
+      "teks": "Implementasi teknologi kecerdasan buatan dalam sektor pendidikan memberikan dampak signifikan terhadap peningkatan kualitas pembelajaran. Transformasi digital yang berkelanjutan memungkinkan optimalisasi proses pengajaran secara komprehensif dan terstruktur, sehingga diharapkan dapat mendorong tercapainya tujuan pendidikan nasional secara lebih efektif dan efisien.",
+      "label_benar": "AI",
+      "prediksi": "AI",
+      "confidence_pct": 96.1,
+      "prob_ai_pct": 96.1,
+      "prob_manusia_pct": 3.9,
+      "is_correct": true
+    },
+    {
+      "id": 2,
+      "deskripsi": "Teks gaul/informal (gaya khas tulisan manusia di medsos)",
+      "teks": "eh btw tadi gue makan di kantin kampus, antrinya panjang bgt dong 😭 sampe telat masuk kelas. dosen udah mulai ngejelasin materi tapi gue masih bingung banget sama tugasnya. ada yang bisa bantu gasih? deadline-nya besok soalnya hehe. tolong dong yg baik hati 🙏",
+      "label_benar": "MANUSIA",
+      "prediksi": "AI",
+      "confidence_pct": 84.1,
+      "prob_ai_pct": 84.1,
+      "prob_manusia_pct": 15.9,
+      "is_correct": false
+    },
+    {
+      "id": 3,
+      "deskripsi": "Manusia menulis dengan gaya formal (edge case — model kemungkinan salah)",
+      "teks": "Berdasarkan pengamatan saya selama beberapa bulan terakhir, dapat disimpulkan bahwa permasalahan yang dihadapi masyarakat dalam mengakses layanan kesehatan bersumber dari kurangnya infrastruktur yang memadai di daerah terpencil. Diperlukan upaya kolaboratif antara pemerintah pusat dan daerah untuk mengatasi permasalahan tersebut secara menyeluruh dan berkelanjutan.",
+      "label_benar": "MANUSIA",
+      "prediksi": "AI",
+      "confidence_pct": 95.1,
+      "prob_ai_pct": 95.1,
+      "prob_manusia_pct": 4.9,
+      "is_correct": false
+    }
+  ]
+}

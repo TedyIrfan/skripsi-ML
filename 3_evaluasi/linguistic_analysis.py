@@ -5,13 +5,21 @@ import joblib
 import re
 from collections import Counter
 import warnings
+import os
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import seaborn as sns
 warnings.filterwarnings('ignore')
+
+OUT = "hasil_phase5/4_linguistic_analysis"  # folder berbeda dari 4_error_analysis
+os.makedirs(OUT, exist_ok=True)
 
 print("ANALISIS LINGUISTIK - PERBEDAAN AI vs MANUSIA")
 
 # Load dataset dulu
 print("\nLoad dataset...")
-df = pd.read_csv("dataset_skripsi_manusia_ai_1510.csv", encoding='utf-8')
+df = pd.read_csv("dataset_clean_1500.csv", encoding='utf-8')
 df = df.dropna()
 
 # Pisah teks AI dan Manusia
@@ -164,3 +172,96 @@ Perbedaan Utama Teks AI vs Manusia:
 """
 
 print(summary)
+
+# ======================================================
+# VISUALISASI
+# ======================================================
+print("\nMembuat visualisasi analisis linguistik...")
+plt.style.use('seaborn-v0_8-whitegrid')
+
+# GRAFIK 1: Perbandingan Metrik Linguistik (4 panel)
+fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+
+# Panel 1: Panjang Kalimat Rata-rata
+categories = ['AI', 'Manusia']
+sent_lengths = [ai_avg_sent_len, human_avg_sent_len]
+bars = axes[0, 0].bar(categories, sent_lengths, color=['#e74c3c', '#3498db'],
+                       alpha=0.85, edgecolor='white', width=0.5)
+for bar, val in zip(bars, sent_lengths):
+    axes[0, 0].text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.3,
+                    f'{val:.2f}', ha='center', fontsize=11, fontweight='bold')
+axes[0, 0].set_title('Rata-rata Panjang Kalimat\n(kata per kalimat)', fontsize=11, fontweight='bold')
+axes[0, 0].set_ylabel('Kata/Kalimat')
+axes[0, 0].grid(axis='y', alpha=0.3)
+
+# Panel 2: Keragaman Leksikal (TTR)
+ttr_vals = [ai_lex['ttr'] * 100, human_lex['ttr'] * 100]
+bars = axes[0, 1].bar(categories, ttr_vals, color=['#e74c3c', '#3498db'],
+                       alpha=0.85, edgecolor='white', width=0.5)
+for bar, val in zip(bars, ttr_vals):
+    axes[0, 1].text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.3,
+                    f'{val:.2f}%', ha='center', fontsize=11, fontweight='bold')
+axes[0, 1].set_title('Keragaman Leksikal (TTR)\n(Tipe-Token Ratio)', fontsize=11, fontweight='bold')
+axes[0, 1].set_ylabel('TTR (%)')
+axes[0, 1].grid(axis='y', alpha=0.3)
+
+# Panel 3: Panjang Kata Rata-rata
+word_lengths = [ai_avg_word_len, human_avg_word_len]
+bars = axes[1, 0].bar(categories, word_lengths, color=['#e74c3c', '#3498db'],
+                       alpha=0.85, edgecolor='white', width=0.5)
+for bar, val in zip(bars, word_lengths):
+    axes[1, 0].text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.05,
+                    f'{val:.2f}', ha='center', fontsize=11, fontweight='bold')
+axes[1, 0].set_title('Rata-rata Panjang Kata\n(karakter per kata)', fontsize=11, fontweight='bold')
+axes[1, 0].set_ylabel('Karakter/Kata')
+axes[1, 0].grid(axis='y', alpha=0.3)
+
+# Panel 4: Frekuensi Tanda Baca per 1000 kata
+punct_labels = ['Titik (.)', 'Koma (,)', 'Seru (!)', 'Tanya (?)', 'Titik Koma (;)', 'Titik Dua (:)']
+ai_punct_rates = [(ai_punct[p] / ai_lex['total_words']) * 1000 for p in ['.', ',', '!', '?', ';', ':']]
+human_punct_rates = [(human_punct[p] / human_lex['total_words']) * 1000 for p in ['.', ',', '!', '?', ';', ':']]
+
+x = np.arange(len(punct_labels))
+width = 0.35
+bars1 = axes[1, 1].bar(x - width/2, ai_punct_rates, width, label='AI', color='#e74c3c', alpha=0.85)
+bars2 = axes[1, 1].bar(x + width/2, human_punct_rates, width, label='Manusia', color='#3498db', alpha=0.85)
+axes[1, 1].set_title('Frekuensi Tanda Baca\n(per 1000 kata)', fontsize=11, fontweight='bold')
+axes[1, 1].set_ylabel('Frekuensi / 1000 Kata')
+axes[1, 1].set_xticks(x)
+axes[1, 1].set_xticklabels(punct_labels, fontsize=8, rotation=15)
+axes[1, 1].legend()
+axes[1, 1].grid(axis='y', alpha=0.3)
+
+plt.suptitle('Analisis Linguistik — AI vs Manusia', fontsize=14, fontweight='bold', y=1.01)
+plt.tight_layout()
+plt.savefig(f'{OUT}/1_perbandingan_linguistik_4panel.png', dpi=300, bbox_inches='tight')
+plt.close()
+print(f"  [OK] {OUT}/1_perbandingan_linguistik_4panel.png")
+
+# GRAFIK 2: Jumlah Kata & Kata Unik
+fig, ax = plt.subplots(figsize=(10, 6))
+x = np.arange(2)
+width = 0.3
+vals_ai = [ai_lex['total_words'], ai_lex['unique_words']]
+vals_human = [human_lex['total_words'], human_lex['unique_words']]
+bars1 = ax.bar(x - width/2, vals_ai, width, label='AI', color='#e74c3c', alpha=0.85)
+bars2 = ax.bar(x + width/2, vals_human, width, label='Manusia', color='#3498db', alpha=0.85)
+for bar, val in zip(bars1, vals_ai):
+    ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 200,
+            f'{val:,}', ha='center', fontsize=10, fontweight='bold', color='#e74c3c')
+for bar, val in zip(bars2, vals_human):
+    ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 200,
+            f'{val:,}', ha='center', fontsize=10, fontweight='bold', color='#3498db')
+ax.set_xticks(x)
+ax.set_xticklabels(['Total Kata', 'Kata Unik'], fontsize=11)
+ax.set_ylabel('Jumlah', fontsize=12)
+ax.set_title('Statistik Leksikal — Total Kata vs Kata Unik', fontsize=13, fontweight='bold')
+ax.legend(fontsize=11)
+ax.grid(axis='y', alpha=0.3)
+plt.tight_layout()
+plt.savefig(f'{OUT}/2_statistik_leksikal.png', dpi=300, bbox_inches='tight')
+plt.close()
+print(f"  [OK] {OUT}/2_statistik_leksikal.png")
+
+print(f"\nSemua grafik tersimpan di: {OUT}/")
+print("Analisis Linguistik Selesai!")

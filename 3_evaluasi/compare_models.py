@@ -1,8 +1,12 @@
 """
 EVALUASI 3 - Perbandingan Detail 4 Model
-Tabel metrik lengkap + grafik perbandingan terperinci
+Membaca hasil langsung dari JSON — tidak melatih ulang model.
+  - models_strict/strict_cv_results.json     → LR, SVM, RF
+  - models_indobert/indobert_results.json    → IndoBERT
+  - models_group_cv/group_cv_results.json    → Group CV
 Output: hasil_phase5/3_perbandingan_model/
 """
+import json
 import numpy as np
 import pandas as pd
 import matplotlib
@@ -20,40 +24,102 @@ print("EVALUASI 3 — PERBANDINGAN DETAIL 4 MODEL")
 print(f"Output: {OUT}/")
 print("="*60)
 
-# Data lengkap semua 4 model
+# ──────────────────────────────────────────────────────────
+# LOAD HASIL DARI JSON (tidak melatih ulang model)
+# ──────────────────────────────────────────────────────────
+STRICT_JSON   = 'models_strict/strict_cv_results.json'
+INDOBERT_JSON = 'models_indobert/indobert_results.json'
+GROUP_JSON    = 'models_group_cv/group_cv_results.json'
+
+print(f"\nLoad: {STRICT_JSON}")
+with open(STRICT_JSON, 'r') as f:
+    strict = json.load(f)
+
+print(f"Load: {INDOBERT_JSON}")
+with open(INDOBERT_JSON, 'r') as f:
+    indobert = json.load(f)
+
+test_res   = strict['test_results']
+cv_res     = strict['cv_results']
+test_total = strict['test_size']       # 300
+n_pos = n_neg = test_total // 2        # 150 AI + 150 MANUSIA (dataset balanced)
+
+# Helper: hitung TN/FP/FN/TP dari precision & recall
+def derive_cm(prec, rec, n_pos=150, n_neg=150):
+    tp = round(rec  * n_pos)
+    fn = n_pos - tp
+    fp = round(tp / prec - tp) if prec > 0 else 0
+    tn = n_neg - fp
+    return int(tn), int(fp), int(fn), int(tp)
+
+# ── ML klasik (LR, SVM, RF) ──
+ml_order  = ['Logistic Regression', 'SVM (RBF Kernel)', 'Random Forest']
+ml_labels = ['LR', 'SVM', 'RF']
+
+acc_ml  = [round(test_res[m]['test_accuracy']  * 100, 2) for m in ml_order]
+prec_ml = [round(test_res[m]['test_precision'] * 100, 2) for m in ml_order]
+rec_ml  = [round(test_res[m]['test_recall']    * 100, 2) for m in ml_order]
+f1_ml   = [round(test_res[m]['test_f1']        * 100, 2) for m in ml_order]
+auc_ml  = [round(test_res[m]['test_auc']       * 100, 2) for m in ml_order]
+cv_ml   = [round(cv_res[m]['cv_mean']          * 100, 2) for m in ml_order]
+
+cms_ml = [derive_cm(test_res[m]['test_precision'], test_res[m]['test_recall']) for m in ml_order]
+tn_ml  = [c[0] for c in cms_ml]
+fp_ml  = [c[1] for c in cms_ml]
+fn_ml  = [c[2] for c in cms_ml]
+tp_ml  = [c[3] for c in cms_ml]
+fnr_ml = [round(c[2] / (c[2] + c[3]) * 100, 2) if (c[2] + c[3]) > 0 else 0.0 for c in cms_ml]
+
+# ── IndoBERT ──
+ib_acc  = round(indobert['test_accuracy']        * 100, 2)
+ib_prec = round(indobert['test_precision']       * 100, 2)
+ib_rec  = round(indobert['test_recall']          * 100, 2)
+ib_f1   = round(indobert['test_f1']              * 100, 2)
+ib_fnr  = round(indobert['false_negative_rate']  * 100, 2)
+ib_cm   = indobert['confusion_matrix']
+ib_tn, ib_fp, ib_fn, ib_tp = ib_cm['tn'], ib_cm['fp'], ib_cm['fn'], ib_cm['tp']
+
+# ── Group CV (dari group_cv_results.json) ──
+print(f"Load: {GROUP_JSON}")
+with open(GROUP_JSON, 'r') as f:
+    grp = json.load(f)['group_cv_results']
+
+group_cv_ml = [round(grp[m]['group_cv_mean'] * 100, 2) for m in ml_order]
+
+# ──────────────────────────────────────────────────────────
+# BUILD DATAFRAME
+# ──────────────────────────────────────────────────────────
 results = {
-    'Model': ['Logistic Regression', 'SVM (RBF Kernel)', 'Random Forest', 'IndoBERT'],
-    'Accuracy (%)':  [99.67, 99.67, 98.34, 97.35],
-    'Precision (%)': [99.35, 99.35, 96.82, 95.00],
-    'Recall (%)':    [100.00, 100.00, 100.00, 100.00],
-    'F1-Score (%)':  [99.67, 99.67, 98.38, 97.44],
-    'AUC-ROC (%)':   [99.99, 100.00, 99.86, None],
-    'FNR (%)':       [0.00, 0.00, 0.00, 0.00],
-    'Standard CV (%)': [99.75, 99.75, 98.59, None],
-    'Group CV (%)':    [87.29, 96.74, 81.49, None],
-    'TN': [149, 149, 145, 142],
-    'FP': [1, 1, 5, 8],
-    'FN': [0, 0, 0, 0],
-    'TP': [152, 152, 152, 152],
+    'Model':           ml_order          + ['IndoBERT'],
+    'Accuracy (%)':    acc_ml            + [ib_acc],
+    'Precision (%)':   prec_ml           + [ib_prec],
+    'Recall (%)':      rec_ml            + [ib_rec],
+    'F1-Score (%)':    f1_ml             + [ib_f1],
+    'AUC-ROC (%)':     auc_ml            + [None],
+    'FNR (%)':         fnr_ml            + [ib_fnr],
+    'Standard CV (%)': cv_ml             + [None],
+    'Group CV (%)':    group_cv_ml       + [None],
+    'TN':              tn_ml             + [ib_tn],
+    'FP':              fp_ml             + [ib_fp],
+    'FN':              fn_ml             + [ib_fn],
+    'TP':              tp_ml             + [ib_tp],
 }
 df = pd.DataFrame(results)
 
-print("\nTabel Perbandingan Lengkap:")
-print(df.to_string(index=False))
+print(f"\nTabel Perbandingan Lengkap (Test Set = {test_total} data):")
+print(df[['Model','Accuracy (%)','Precision (%)','Recall (%)','F1-Score (%)','FNR (%)']].to_string(index=False))
 
-# ── GRAFIK 1: Heatmap Standard CV vs Group CV ──
+# ──────────────────────────────────────────────────────────
+# GRAFIK 1: Heatmap Standard CV vs Group CV
+# ──────────────────────────────────────────────────────────
 print("\n[1] Heatmap Standard CV vs Group CV...")
 
-# Heatmap A: Test Set (Standard CV approach)
 cols_std = ['Accuracy (%)', 'Precision (%)', 'Recall (%)', 'F1-Score (%)', 'FNR (%)']
 data_std = df.set_index('Model')[cols_std].apply(pd.to_numeric, errors='coerce')
-
-# Heatmap B: Standard CV mean vs Group CV mean (3 model klasik saja)
-data_cv = df.set_index('Model')[['Standard CV (%)', 'Group CV (%)']].apply(pd.to_numeric, errors='coerce')
+data_cv  = df.set_index('Model')[['Standard CV (%)', 'Group CV (%)']].apply(pd.to_numeric, errors='coerce')
 
 fig, axes = plt.subplots(1, 2, figsize=(17, 5))
 
-# Panel kiri: Test Set Metrics
 sns.heatmap(data_std, annot=True, fmt='.2f', cmap='YlGn', ax=axes[0],
             linewidths=0.5, cbar_kws={'shrink': 0.8},
             annot_kws={'size': 11, 'weight': 'bold'})
@@ -62,38 +128,38 @@ axes[0].set_title('Metrik Test Set (Internal)\n— Standard Evaluation',
 axes[0].set_xticklabels(axes[0].get_xticklabels(), rotation=20, ha='right', fontsize=9)
 axes[0].set_yticklabels(axes[0].get_yticklabels(), rotation=0, fontsize=9)
 
-# Panel kanan: Standard CV vs Group CV
 sns.heatmap(data_cv, annot=True, fmt='.2f', cmap='RdYlGn', ax=axes[1],
             linewidths=0.5, cbar_kws={'shrink': 0.8},
             annot_kws={'size': 13, 'weight': 'bold'},
-            vmin=75, vmax=101)
+            vmin=40, vmax=101)
 axes[1].set_title('Standard CV vs Group CV\n(NaN = IndoBERT tidak pakai CV klasik)',
                   fontsize=12, fontweight='bold')
 axes[1].set_xticklabels(axes[1].get_xticklabels(), rotation=0, fontsize=11, fontweight='bold')
 axes[1].set_yticklabels(axes[1].get_yticklabels(), rotation=0, fontsize=9)
 
-plt.suptitle('Heatmap Perbandingan Metrik — 4 Model (Test Set = 302 data)',
+plt.suptitle(f'Heatmap Perbandingan Metrik — 4 Model (Test Set = {test_total} data)',
              fontsize=14, fontweight='bold', y=1.01)
 plt.tight_layout()
 plt.savefig(f'{OUT}/1_heatmap_metrics_lengkap.png', dpi=300, bbox_inches='tight')
 plt.close()
 print(f"  [OK] {OUT}/1_heatmap_metrics_lengkap.png")
 print(f"       Panel kiri : Test Set (Standard Evaluation)")
-print(f"       Panel kanan: Standard CV vs Group CV (warna merah = domain gap)")
+print(f"       Panel kanan: Standard CV vs Group CV (warna merah = domain gap besar)")
 
-
-# ── GRAFIK 2: Radar Chart / Spider Chart ──
+# ──────────────────────────────────────────────────────────
+# GRAFIK 2: Radar Chart
+# ──────────────────────────────────────────────────────────
 print("\n[2] Radar Chart semua model...")
 categories = ['Accuracy','Precision','Recall','F1-Score']
-N = len(categories)
+N      = len(categories)
 angles = [n/N * 2 * np.pi for n in range(N)]
 angles += angles[:1]
 
 model_vals = {
-    'LR':       [99.67, 99.35, 100.00, 99.67],
-    'SVM':      [99.67, 99.35, 100.00, 99.67],
-    'RF':       [98.34, 96.82, 100.00, 98.38],
-    'IndoBERT': [97.35, 95.00, 100.00, 97.44],
+    'LR':       [acc_ml[0],  prec_ml[0],  rec_ml[0],  f1_ml[0]],
+    'SVM':      [acc_ml[1],  prec_ml[1],  rec_ml[1],  f1_ml[1]],
+    'RF':       [acc_ml[2],  prec_ml[2],  rec_ml[2],  f1_ml[2]],
+    'IndoBERT': [ib_acc,     ib_prec,     ib_rec,     ib_f1],
 }
 colors_r = ['#2196F3','#4CAF50','#FF9800','#9C27B0']
 
@@ -116,11 +182,13 @@ plt.savefig(f'{OUT}/2_radar_chart_4models.png', dpi=300, bbox_inches='tight')
 plt.close()
 print(f"  [OK] {OUT}/2_radar_chart_4models.png")
 
-# ── GRAFIK 3: FP Comparison (mana yang paling banyak salah) ──
-print("\n[3] False Positive Comparison...")
-models_fp = ['LR', 'SVM', 'RF', 'IndoBERT']
-fp_vals   = [1, 1, 5, 8]
-fn_vals   = [0, 0, 0, 0]
+# ──────────────────────────────────────────────────────────
+# GRAFIK 3: FP vs FN Comparison
+# ──────────────────────────────────────────────────────────
+print("\n[3] False Positive vs False Negative Comparison...")
+models_fp = ml_labels + ['IndoBERT']
+fp_vals   = fp_ml + [ib_fp]
+fn_vals   = fn_ml + [ib_fn]
 
 x = np.arange(len(models_fp))
 fig, ax = plt.subplots(figsize=(9, 6))
@@ -132,24 +200,27 @@ for bar in b1:
     ax.text(bar.get_x()+bar.get_width()/2, h+0.05,
             str(int(h)), ha='center', fontsize=14, fontweight='bold')
 for bar in b2:
-    ax.text(bar.get_x()+bar.get_width()/2, 0.15,
-            '0', ha='center', fontsize=14, fontweight='bold', color='#F44336')
+    h = bar.get_height()
+    ax.text(bar.get_x()+bar.get_width()/2, h+0.05,
+            str(int(h)), ha='center', fontsize=14, fontweight='bold', color='#c0392b')
 
 ax.set_ylabel('Jumlah Kesalahan', fontsize=12, fontweight='bold')
-ax.set_title('Perbandingan Kesalahan Klasifikasi — 4 Model\n(dari 302 data test)',
+ax.set_title(f'Perbandingan Kesalahan Klasifikasi — 4 Model\n(dari {test_total} data test | FN = teks AI yang lolos sebagai Manusia)',
              fontsize=13, fontweight='bold')
 ax.set_xticks(x)
 ax.set_xticklabels(models_fp, fontsize=12)
-ax.set_ylim([0, 12])
+ax.set_ylim([0, max(max(fp_vals), max(fn_vals)) + 3])
 ax.legend(fontsize=10)
 ax.grid(axis='y', alpha=0.3)
 ax.axhline(0, color='black', linewidth=0.8)
 
-# Catatan FNR
-ax.text(0.5, 0.92, 'FNR = 0% untuk semua model (tidak ada AI yang lolos)',
-        transform=ax.transAxes, ha='center', fontsize=10,
-        color='darkgreen', fontweight='bold',
-        bbox=dict(facecolor='lightgreen', alpha=0.4, boxstyle='round'))
+best_fnr = min(fnr_ml)
+best_model_idx = fnr_ml.index(best_fnr)
+note = f'IndoBERT: FP=0 (Precision 100%) | {ml_labels[best_model_idx]}: FNR terkecil ML klasik ({best_fnr:.2f}%)'
+ax.text(0.5, 0.92, note,
+        transform=ax.transAxes, ha='center', fontsize=9.5,
+        color='darkblue', fontweight='bold',
+        bbox=dict(facecolor='lightblue', alpha=0.4, boxstyle='round'))
 plt.tight_layout()
 plt.savefig(f'{OUT}/3_kesalahan_klasifikasi.png', dpi=300, bbox_inches='tight')
 plt.close()
@@ -159,6 +230,10 @@ print("\n" + "="*60)
 print("EVALUASI 3 SELESAI!")
 print("="*60)
 print(f"\nFile tersimpan di: {OUT}/")
-print("  1_heatmap_metrics.png       → Tabel metrik visual")
-print("  2_radar_chart_4models.png   → Radar chart 4 model")
-print("  3_kesalahan_klasifikasi.png → FP vs FN semua model")
+print("  1_heatmap_metrics_lengkap.png → Tabel metrik visual (test set + CV)")
+print("  2_radar_chart_4models.png     → Radar chart 4 model")
+print("  3_kesalahan_klasifikasi.png   → FP vs FN semua model")
+print(f"\nSumber data:")
+print(f"  {STRICT_JSON}")
+print(f"  {INDOBERT_JSON}")
+print(f"  {GROUP_JSON}")

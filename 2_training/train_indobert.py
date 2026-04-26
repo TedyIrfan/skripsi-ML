@@ -4,6 +4,10 @@ import numpy as np
 import os
 import json
 import warnings
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import seaborn as sns
 warnings.filterwarnings('ignore')
 
 # Cek apakah PyTorch dan Transformers tersedia
@@ -34,16 +38,15 @@ if not HAS_TRANSFORMERS:
     print("\nCannot proceed without required dependencies.")
     exit(1)
 
-# Setup device (GPU kalau ada)
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-print(f"\nUsing device: {device}")
-if device.type == 'cuda':
-    print(f"GPU: {torch.cuda.get_device_name(0)}")
-    print(f"Memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
+# Setup device (paksa pakai CPU sesuai permintaan)
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = ""  # Sembunyikan GPU dari PyTorch
+device = torch.device('cpu')
+print(f"\nUsing device: {device} (Forced)")
 
 # Load dataset dulu
 print("\nLoad dataset...")
-df = pd.read_csv("dataset_skripsi_manusia_ai_1510.csv", encoding='utf-8')
+df = pd.read_csv("dataset_clean_1500.csv", encoding='utf-8')
 df = df.dropna(subset=['text', 'label'])
 print(f"    Total data: {len(df)}")
 print(f"    - MANUSIA: {(df['label'] == 'MANUSIA').sum()}")
@@ -189,6 +192,7 @@ training_args = TrainingArguments(
     seed=42,
     fp16=False,
     gradient_accumulation_steps=1, # dikurangi dari 2 → update lebih sering
+    use_cpu=True, # Paksa training pakai CPU
 )
 
 print(f"    Epochs: {training_args.num_train_epochs}")
@@ -248,6 +252,24 @@ tn, fp, fn, tp = cm.ravel()
 fnr = fn / (fn + tp) if (fn + tp) > 0 else 0
 print(f"\nFalse Negative Rate: {fnr*100:.2f}%")
 print(f"({fn} AI texts classified as MANUSIA)")
+
+# Visualisasi Confusion Matrix IndoBERT → hasil_phase4/
+print("\nMembuat visualisasi Confusion Matrix IndoBERT...")
+OUT4 = "hasil_phase4"
+os.makedirs(OUT4, exist_ok=True)
+
+fig, ax = plt.subplots(figsize=(6, 5))
+cm_df = pd.DataFrame(cm, index=['MANUSIA', 'AI'], columns=['MANUSIA', 'AI'])
+sns.heatmap(cm_df, annot=True, fmt='d', cmap='Blues', ax=ax,
+            linewidths=0.5, cbar=False, annot_kws={"size": 18, "weight": "bold"})
+ax.set_title(f'Confusion Matrix — IndoBERT\nTest Accuracy: {accuracy*100:.1f}%',
+             fontsize=12, fontweight='bold', pad=12)
+ax.set_xlabel('Prediksi', fontsize=11)
+ax.set_ylabel('Aktual', fontsize=11)
+plt.tight_layout()
+plt.savefig(f'{OUT4}/5_confusion_matrix_indobert.png', dpi=300, bbox_inches='tight')
+plt.close()
+print(f"  [OK] {OUT4}/5_confusion_matrix_indobert.png")
 
 # Simpen model
 print("\nMenyimpan model")

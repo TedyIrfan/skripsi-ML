@@ -1,6 +1,6 @@
 """
 Script untuk menggabungkan data AI dan Manusia menjadi dataset final
-Output: dataset_skripsi_manusia_ai_1510.csv (1510 baris: 760 AI + 750 Manusia)
+Output: dataset_clean_1500.csv (1500 baris: 750 AI + 750 Manusia)
 """
 import pandas as pd
 
@@ -10,8 +10,8 @@ print("=" * 55)
 
 # ── 1. Load kedua file ──────────────────────────────────
 print("\n[1/4] Load data...")
-df_ai     = pd.read_csv('data_ai_all_clean.csv', encoding='utf-8')
-df_manusia = pd.read_csv('data_manusia_all_clean.csv', encoding='utf-8')
+df_ai     = pd.read_csv('../0_dataset/data_ai_clean.csv', encoding='utf-8')
+df_manusia = pd.read_csv('../0_dataset/data_manusia_clean.csv', encoding='utf-8')
 
 print(f"  Data AI      : {len(df_ai)} teks")
 print(f"  Data Manusia : {len(df_manusia)} teks")
@@ -45,7 +45,7 @@ else:
     print(f"  WARNING: Ada {len(overlap)} teks yang overlap!")
 
 # ── Simpan ──────────────────────────────────────────────
-OUTPUT = 'dataset_skripsi_manusia_ai_1510.csv'
+OUTPUT = 'dataset_clean_1500.csv'
 df_final.to_csv(OUTPUT, index=False, encoding='utf-8')
 
 print(f"\n{'=' * 55}")

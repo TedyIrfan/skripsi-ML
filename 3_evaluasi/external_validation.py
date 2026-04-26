@@ -1,192 +1,189 @@
 """
-External Validation Script
-Test model generalization on completely new data
+External Validation / Adversarial Testing Script
+Menguji model tradisional ML melawan dataset adversarial (250 teks AI slang/typo).
 """
 import pandas as pd
-import joblib
 import numpy as np
-from sklearn.metrics import (
-    accuracy_score, precision_score, recall_score, f1_score,
-    confusion_matrix, classification_report
-)
-import json
+import os
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.model_selection import train_test_split
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.svm import SVC
+from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
+import warnings
+warnings.filterwarnings('ignore')
 
-print("="*60)
-print("EXTERNAL VALIDATION")
-print("="*60)
+OUT = "hasil_phase5/7_adversarial_test"
+os.makedirs(OUT, exist_ok=True)
 
-# Load external data
-print("\n[1] Loading external validation data...")
-try:
-    df_external = pd.read_csv('external_validation.csv', encoding='utf-8')
-    print(f"    ✓ Loaded {len(df_external)} samples")
-    print(f"    Label distribution:")
-    print(f"      - MANUSIA: {(df_external['label'] == 'MANUSIA').sum()}")
-    print(f"      - AI: {(df_external['label'] == 'AI').sum()}")
-except FileNotFoundError:
-    print("    ✗ File not found: external_validation.csv")
-    print("    Please create external validation dataset first!")
-    print("    Run: python merge_external_validation.py")
-    exit()
+print("="*70)
+print("ADVERSARIAL TESTING — 3 MODEL ML vs 250 Teks AI Slang/Typo")
+print("="*70)
 
-# Prepare data
+# [1] Load & Latih Model dari Data Asli
+print("\n[1] Melatih ulang 3 Model dari dataset_clean_1500.csv...")
+df_train = pd.read_csv("dataset_clean_1500.csv", encoding='utf-8')
+df_train = df_train.dropna(subset=['text', 'label'])
 label_mapping = {'MANUSIA': 0, 'AI': 1}
-X_external = df_external['text'].values
-y_external = df_external['label'].map(label_mapping).values
+X_train = df_train['text']
+y_train = df_train['label'].map(label_mapping)
 
-# Load trained model
-print("\n[2] Loading trained model...")
-try:
-    model = joblib.load('models_strict/best_pipeline_logistic_regression.pkl')
-    print("    ✓ Model loaded: Logistic Regression")
-except FileNotFoundError:
-    print("    ✗ Model not found!")
-    print("    Please train model first: python train_strict_cv.py")
-    exit()
+vectorizer = TfidfVectorizer(max_features=5000, min_df=2, max_df=0.8, ngram_range=(1, 2))
+X_train_vec = vectorizer.fit_transform(X_train)
 
-# Make predictions
-print("\n[3] Making predictions...")
-y_pred = model.predict(X_external)
-y_pred_proba = model.predict_proba(X_external)
-print("    ✓ Predictions completed")
-
-# Calculate metrics
-print("\n[4] Calculating metrics...")
-accuracy = accuracy_score(y_external, y_pred)
-precision = precision_score(y_external, y_pred)
-recall = recall_score(y_external, y_pred)
-f1 = f1_score(y_external, y_pred)
-cm = confusion_matrix(y_external, y_pred)
-
-# Print results
-print("\n" + "="*60)
-print("EXTERNAL VALIDATION RESULTS")
-print("="*60)
-print(f"\nOverall Metrics:")
-print(f"  Accuracy:  {accuracy*100:.2f}%")
-print(f"  Precision: {precision*100:.2f}%")
-print(f"  Recall:    {recall*100:.2f}%")
-print(f"  F1-Score:  {f1*100:.2f}%")
-
-print(f"\nConfusion Matrix:")
-print(f"  TN: {cm[0,0]:3d}  FP: {cm[0,1]:3d}")
-print(f"  FN: {cm[1,0]:3d}  TP: {cm[1,1]:3d}")
-
-# Per-source analysis
-if 'source' in df_external.columns:
-    print(f"\n" + "="*60)
-    print("PER-SOURCE ANALYSIS")
-    print("="*60)
-    
-    for source in df_external['source'].unique():
-        df_source = df_external[df_external['source'] == source]
-        X_source = df_source['text'].values
-        y_source = df_source['label'].map(label_mapping).values
-        y_pred_source = model.predict(X_source)
-        
-        acc_source = accuracy_score(y_source, y_pred_source)
-        correct = (y_source == y_pred_source).sum()
-        total = len(y_source)
-        
-        print(f"\n{source}:")
-        print(f"  Samples: {total}")
-        print(f"  Correct: {correct}/{total}")
-        print(f"  Accuracy: {acc_source*100:.2f}%")
-
-# Error analysis
-print(f"\n" + "="*60)
-print("ERROR ANALYSIS")
-print("="*60)
-
-errors = df_external.copy()
-errors['predicted'] = ['MANUSIA' if p == 0 else 'AI' for p in y_pred]
-errors['correct'] = errors['label'] == errors['predicted']
-errors['confidence'] = [max(proba) for proba in y_pred_proba]
-
-error_samples = errors[~errors['correct']]
-print(f"\nTotal errors: {len(error_samples)}/{len(df_external)} ({len(error_samples)/len(df_external)*100:.1f}%)")
-
-if len(error_samples) > 0:
-    print("\nError breakdown:")
-    false_positives = error_samples[error_samples['label'] == 'MANUSIA']
-    false_negatives = error_samples[error_samples['label'] == 'AI']
-    print(f"  False Positives (Human → AI): {len(false_positives)}")
-    print(f"  False Negatives (AI → Human): {len(false_negatives)}")
-    
-    print("\nSample errors (first 5):")
-    for idx, row in error_samples.head(5).iterrows():
-        print(f"\n  [{idx+1}] Text: {row['text'][:100]}...")
-        print(f"      True: {row['label']} | Predicted: {row['predicted']}")
-        print(f"      Confidence: {row['confidence']*100:.1f}%")
-        if 'source' in row:
-            print(f"      Source: {row['source']}")
-else:
-    print("\n✓ Perfect predictions! No errors found.")
-
-# Save results
-print(f"\n[5] Saving results...")
-
-results = {
-    'dataset_info': {
-        'total_samples': int(len(df_external)),
-        'human_samples': int((df_external['label'] == 'MANUSIA').sum()),
-        'ai_samples': int((df_external['label'] == 'AI').sum()),
-    },
-    'overall_metrics': {
-        'accuracy': float(accuracy),
-        'precision': float(precision),
-        'recall': float(recall),
-        'f1_score': float(f1),
-    },
-    'confusion_matrix': {
-        'tn': int(cm[0,0]),
-        'fp': int(cm[0,1]),
-        'fn': int(cm[1,0]),
-        'tp': int(cm[1,1]),
-    },
-    'error_rate': float(len(error_samples) / len(df_external)),
-    'per_source': {}
+models = {
+    'Random Forest': RandomForestClassifier(n_estimators=100, max_depth=20, min_samples_split=5, min_samples_leaf=2, random_state=42, n_jobs=-1),
+    'Logistic Regression': LogisticRegression(max_iter=1000, random_state=42),
+    'SVM (RBF)': SVC(kernel='rbf', probability=True, random_state=42)
 }
 
-if 'source' in df_external.columns:
-    for source in df_external['source'].unique():
-        df_source = df_external[df_external['source'] == source]
-        X_source = df_source['text'].values
-        y_source = df_source['label'].map(label_mapping).values
-        y_pred_source = model.predict(X_source)
-        acc_source = accuracy_score(y_source, y_pred_source)
-        
-        results['per_source'][source] = {
-            'samples': int(len(df_source)),
-            'accuracy': float(acc_source)
-        }
+trained_models = {}
+for name, model in models.items():
+    model.fit(X_train_vec, y_train)
+    trained_models[name] = model
+print("    [OK] Semua model siap")
 
-with open('external_validation_results.json', 'w', encoding='utf-8') as f:
-    json.dump(results, f, indent=2, ensure_ascii=False)
+# [2] Load Adversarial Dataset
+print("\n[2] Loading Adversarial Dataset (dataset_adversal.csv)...")
+df_ext = pd.read_csv('dataset_adversal.csv', encoding='utf-8')
+df_ext = df_ext.dropna(subset=['text', 'label'])
+print(f"    [OK] Loaded {len(df_ext)} samples")
+print(f"    Distribusi: AI={( df_ext['label']=='AI').sum()}, MANUSIA={(df_ext['label']=='MANUSIA').sum()}")
 
-print("    ✓ Saved to: external_validation_results.json")
+X_ext = df_ext['text']
+y_ext = df_ext['label'].map(label_mapping)
+X_ext_vec = vectorizer.transform(X_ext)
 
-# Save detailed results with predictions
-errors.to_csv('external_validation_detailed.csv', index=False, encoding='utf-8')
-print("    ✓ Saved to: external_validation_detailed.csv")
+# [3] Evaluasi
+print("\n[3] Menjalankan Adversarial Testing (3 ML + 1 Deep Learning)...")
+results = []
+cms = {}
+for name, model in trained_models.items():
+    y_pred = model.predict(X_ext_vec)
+    acc = accuracy_score(y_ext, y_pred)
+    cm = confusion_matrix(y_ext, y_pred, labels=[0, 1])
+    cms[name] = cm
+    tn, fp, fn, tp = cm.ravel()
+    fnr = fn / (fn + tp) if (fn + tp) > 0 else 0
+    results.append({'Model': name, 'Adversarial Accuracy': acc,
+                    'TP': tp, 'FN': fn, 'FP': fp, 'TN': tn, 'FNR': fnr})
+    print(f"    [{name}]: Acc={acc*100:.2f}% | FN (AI lolos)={fn} | FNR={fnr*100:.1f}%")
 
-print("\n" + "="*60)
-print("INTERPRETATION")
-print("="*60)
+# Inferensi IndoBERT
+MODEL_PATH = "models_indobert/final_model"
+if os.path.exists(MODEL_PATH):
+    print("\n    [IndoBERT]: Menjalankan inferensi pada 250 teks (harap tunggu)...")
+    import torch
+    from transformers import AutoTokenizer, AutoModelForSequenceClassification
+    
+    device = torch.device('cpu')
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH)
+    model_indo = AutoModelForSequenceClassification.from_pretrained(MODEL_PATH).to(device)
+    model_indo.eval()
+    
+    texts = df_ext['text'].tolist()
+    indobert_preds = []
+    batch_size = 16
+    
+    with torch.no_grad():
+        for i in range(0, len(texts), batch_size):
+            batch_texts = texts[i:i+batch_size]
+            inputs = tokenizer(batch_texts, padding="max_length", truncation=True, max_length=128, return_tensors="pt").to(device)
+            outputs = model_indo(**inputs)
+            preds = torch.argmax(outputs.logits, dim=-1).cpu().numpy()
+            indobert_preds.extend(preds)
+            
+    cm_indo = confusion_matrix(y_ext, indobert_preds, labels=[0, 1])
+    acc_indo = accuracy_score(y_ext, indobert_preds)
+    cms['IndoBERT'] = cm_indo
+    tn, fp, fn, tp = cm_indo.ravel()
+    fnr_indo = fn / (fn + tp) if (fn + tp) > 0 else 0
+    results.append({'Model': 'IndoBERT', 'Adversarial Accuracy': acc_indo,
+                    'TP': tp, 'FN': fn, 'FP': fp, 'TN': tn, 'FNR': fnr_indo})
+    print(f"    [IndoBERT]: Acc={acc_indo*100:.2f}% | FN (AI lolos)={fn} | FNR={fnr_indo*100:.1f}%")
 
-if accuracy >= 0.90:
-    print("\n✓ EXCELLENT: Model generalize sangat baik!")
-    print("  Accuracy ≥ 90% menunjukkan model robust untuk real-world data.")
-elif accuracy >= 0.85:
-    print("\n✓ GOOD: Model generalize dengan baik!")
-    print("  Accuracy 85-90% adalah hasil yang expected dan realistis.")
-elif accuracy >= 0.80:
-    print("\n⚠️  ACCEPTABLE: Model cukup baik.")
-    print("  Ada room for improvement, tapi masih usable.")
-else:
-    print("\n⚠️  CONCERNING: Model mungkin overfit ke training data.")
-    print("  Perlu review model atau tambah variasi training data.")
+results_df = pd.DataFrame(results)
 
-print("\n" + "="*60)
-print("✓ External validation completed!")
-print("="*60)
+# [4] Tampilkan Tabel Ringkasan
+print("\n" + "="*70)
+print(f"{'Model':<25} {'Adv. Accuracy':<16} {'AI Lolos (FN)':<15} {'FNR':<10}")
+print("-"*70)
+for _, row in results_df.iterrows():
+    print(f"{row['Model']:<25} {row['Adversarial Accuracy']*100:>14.2f}% {int(row['FN']):>10} teks {row['FNR']*100:>9.1f}%")
+print("-"*70)
+
+# Export CSV
+results_df.to_csv(f'{OUT}/adversarial_results.csv', index=False)
+print(f"\n[OK] adversarial_results.csv disimpan")
+
+# ========== VISUALISASI ==========
+print("\nMembuat visualisasi...")
+plt.style.use('seaborn-v0_8-whitegrid')
+
+# GRAFIK 1: Bar Chart Akurasi Adversarial vs Baseline
+print("  [1] Bar Comparison Adversarial vs Baseline...")
+baseline_acc = 98.0
+model_names = results_df['Model'].tolist()
+adv_accs = results_df['Adversarial Accuracy'].values * 100
+
+x = np.arange(len(model_names))
+width = 0.35
+
+fig, ax = plt.subplots(figsize=(12, 6))
+bars1 = ax.bar(x - width/2, [baseline_acc]*len(model_names), width, label='Baseline (Standard Dataset)',
+               color='#3498db', alpha=0.85, edgecolor='white')
+bars2 = ax.bar(x + width/2, adv_accs, width, label='Adversarial (Slang/Typo)',
+               color='#e74c3c', alpha=0.85, edgecolor='white')
+
+for bar in bars1:
+    ax.text(bar.get_x()+bar.get_width()/2, bar.get_height()+0.2,
+            f'{bar.get_height():.1f}%', ha='center', va='bottom', fontsize=10, fontweight='bold')
+for bar in bars2:
+    ax.text(bar.get_x()+bar.get_width()/2, bar.get_height()+0.2,
+            f'{bar.get_height():.1f}%', ha='center', va='bottom', fontsize=10, fontweight='bold', color='#c0392b')
+
+ax.set_ylabel('Akurasi (%)', fontsize=12, fontweight='bold')
+ax.set_title(f'Perbandingan Akurasi: Baseline vs Adversarial Testing\n({len(model_names)} Model Klasifikasi)',
+             fontsize=13, fontweight='bold', pad=15)
+ax.set_xticks(x)
+ax.set_xticklabels(model_names, fontsize=11)
+ax.set_ylim([0, 105])
+ax.legend(fontsize=10)
+ax.grid(axis='y', alpha=0.3)
+plt.tight_layout()
+plt.savefig(f'{OUT}/1_adversarial_vs_baseline.png', dpi=300, bbox_inches='tight')
+plt.close()
+print(f"  [OK] {OUT}/1_adversarial_vs_baseline.png")
+
+# GRAFIK 2: Confusion Matrix untuk masing-masing model
+print("  [2] Confusion Matrices...")
+fig, axes = plt.subplots(1, len(cms), figsize=(4.5 * len(cms), 4))
+if len(cms) == 1:
+    axes = [axes]
+    
+for ax, (name, cm) in zip(axes, cms.items()):
+    labels_str = ['MAN', 'AI']
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax,
+                xticklabels=labels_str, yticklabels=labels_str,
+                linewidths=0.5, cbar=False, annot_kws={"size": 14, "weight": "bold"})
+    acc_val = results_df[results_df['Model'] == name]['Adversarial Accuracy'].values[0]
+    ax.set_title(f'{name}\nAdv. Acc: {acc_val*100:.1f}%', fontsize=11, fontweight='bold')
+    ax.set_xlabel('Prediksi', fontsize=10)
+    ax.set_ylabel('Label Asli', fontsize=10)
+
+plt.suptitle('Confusion Matrix — Adversarial Test (250 Teks AI Slang/Typo)',
+             fontsize=13, fontweight='bold', y=1.05)
+plt.tight_layout()
+plt.savefig(f'{OUT}/2_adversarial_confusion_matrices.png', dpi=300, bbox_inches='tight')
+plt.close()
+print(f"  [OK] {OUT}/2_adversarial_confusion_matrices.png")
+
+print(f"\nSemua file tersimpan di: {OUT}/")
+print("="*70)
+print("ADVERSARIAL TESTING SELESAI!")
+print("="*70)

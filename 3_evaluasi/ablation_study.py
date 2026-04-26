@@ -2,20 +2,31 @@
 import pandas as pd
 import numpy as np
 import joblib
+import os
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import seaborn as sns
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.svm import SVC
 from sklearn.metrics import accuracy_score
+from sklearn.base import clone
 import time
 import warnings
 warnings.filterwarnings('ignore')
 
-print("ABLATION STUDY - FEATURE IMPORTANCE ANALYSIS")
+OUT = "hasil_phase5/6_ablation_study"
+os.makedirs(OUT, exist_ok=True)
 
-# Load dataset dulu
+print("ABLATION STUDY - FEATURE IMPORTANCE ANALYSIS UNTUK 3 MODEL")
+
+# Load dataset
 print("\nLoad dataset...")
-df = pd.read_csv("dataset_skripsi_manusia_ai_1510.csv", encoding='utf-8')
-df = df.dropna()
+df = pd.read_csv("dataset_clean_1500.csv", encoding='utf-8')
+df = df.dropna(subset=['text', 'label'])
 
 # Mapping label biar jadi angka
 label_mapping = {'MANUSIA': 0, 'AI': 1}
@@ -32,388 +43,240 @@ X_train, X_test, y_train, y_test = train_test_split(
 
 print(f"     Training: {len(X_train)}, Testing: {len(X_test)}")
 
-# Load baseline model yang sudah dilatih (Pipeline LR)
-print("\nLoad baseline model...")
-baseline_pipeline = joblib.load('models_strict/best_pipeline_logistic_regression.pkl')
+# Setup Baseline Models list
+# Parameter diambil dari nilai baseline di train_strict_cv.py
+baseline_models = {
+    'Random Forest': RandomForestClassifier(n_estimators=100, max_depth=20, min_samples_split=5, min_samples_leaf=2, random_state=42, n_jobs=-1),
+    'Logistic Regression': LogisticRegression(max_iter=1000, random_state=42, C=1.0),
+    'SVM (RBF)': SVC(kernel='rbf', probability=True, random_state=42, C=1.0)
+}
 
-# Ekstrak komponen dari Pipeline
-baseline_vectorizer = baseline_pipeline.named_steps['tfidf']
-baseline_clf = baseline_pipeline.named_steps['clf']
-
-# Prediksi langsung via pipeline (tidak perlu transform manual)
-baseline_pred = baseline_pipeline.predict(X_test)
-baseline_acc = accuracy_score(y_test, baseline_pred)
-
-print(f"     Baseline Accuracy: {baseline_acc*100:.2f}%")
-
-# Analisis Feature Importance
-print("\nAnalisis Feature Importance...")
-feature_names = baseline_vectorizer.get_feature_names_out()
-
-# Cek tipe classifier untuk ambil feature importance yang sesuai
-from sklearn.linear_model import LogisticRegression
-from sklearn.ensemble import RandomForestClassifier
-
-if isinstance(baseline_clf, RandomForestClassifier):
-    feature_importance = baseline_clf.feature_importances_
-    importance_type = "impurity"
-elif isinstance(baseline_clf, LogisticRegression):
-    # Untuk Logistic Regression, gunakan absolute nilai koefisien
-    feature_importance = np.abs(baseline_clf.coef_[0])
-    importance_type = "coefficient magnitude"
-else:
-    # Fallback: uniform importance
-    feature_importance = np.ones(len(feature_names)) / len(feature_names)
-    importance_type = "uniform (unsupported classifier)"
-
-print(f"     Importance type: {importance_type}")
-
-# Ambil top 20 fitur penting
-top_indices = np.argsort(feature_importance)[-20:][::-1]
-
-print("\n     Top 20 Most Important Features (Words):")
-print("-"*70)
-print(f"{'Rank':<5} {'Feature':<20} {'Importance':<12} {'Cumulative':<12}")
-print("-"*70)
-
-cumulative = 0
-for rank, idx in enumerate(top_indices, 1):
-    imp = feature_importance[idx]
-    feat = feature_names[idx]
-    cumulative += imp
-    print(f"{rank:<5} {feat:<20} {imp*100:>11.4f}% {cumulative*100:>11.4f}%")
-
-# Mulai Ablation Study
-print("\n" + "="*70)
-print("ABLATION STUDY - PENGHAPUSAN FITUR")
-
-ablation_results = []
-
-# Uji dengan max_features berbeda
-print("\nMengurangi jumlah fitur (max_features)...")
-for max_feat in [1000, 2000, 3000, 4000, 5000]:
-    # Buat vectorizer baru dengan max_features tertentu
-    vectorizer_temp = TfidfVectorizer(
-        max_features=max_feat,
-        min_df=2,
-        max_df=0.8,
-        ngram_range=(1, 2)
-    )
-
-    # Fit dan transform
-    X_train_temp = vectorizer_temp.fit_transform(X_train)
-    X_test_temp = vectorizer_temp.transform(X_test)
-
-    # Latih model
-    model_temp = RandomForestClassifier(
-        n_estimators=100,
-        max_depth=20,
-        min_samples_split=5,
-        min_samples_leaf=2,
-        random_state=42,
-        n_jobs=-1
-    )
-
-    # Hitung waktu training
-    start_time = time.time()
-    model_temp.fit(X_train_temp, y_train)
-    train_time = time.time() - start_time
-
-    # Prediksi dan hitung akurasi
-    y_pred_temp = model_temp.predict(X_test_temp)
-    acc_temp = accuracy_score(y_test, y_pred_temp)
-
-    # Hitung selisih dari baseline
-    diff = baseline_acc - acc_temp
-
-    # Simpen hasil
-    ablation_results.append({
-        'Configuration': f'max_features={max_feat}',
-        'Description': f'{max_feat} fitur',
-        'Accuracy': acc_temp,
-        'Difference': diff,
-        'Features': max_feat,
-        'Train Time': train_time
-    })
-
-    print(f"     max_features={max_feat}: {acc_temp*100:.2f}% (diff: {diff*100:+.2f}%)")
-
-# Uji tanpa bigram (hanya unigram)
-print("\nMenghapus bigram (unigram only)...")
-vectorizer_uni = TfidfVectorizer(
-    max_features=5000,
-    min_df=2,
-    max_df=0.8,
-    ngram_range=(1, 1)
-)
-
-X_train_uni = vectorizer_uni.fit_transform(X_train)
-X_test_uni = vectorizer_uni.transform(X_test)
-
-model_uni = RandomForestClassifier(
-    n_estimators=100,
-    max_depth=20,
-    min_samples_split=5,
-    min_samples_leaf=2,
-    random_state=42,
-    n_jobs=-1
-)
-
-model_uni.fit(X_train_uni, y_train)
-y_pred_uni = model_uni.predict(X_test_uni)
-acc_uni = accuracy_score(y_test, y_pred_uni)
-diff_uni = baseline_acc - acc_uni
-
-ablation_results.append({
-    'Configuration': 'unigram_only',
-    'Description': 'Hanya unigram (tanpa bigram)',
-    'Accuracy': acc_uni,
-    'Difference': diff_uni,
-    'Features': X_train_uni.shape[1],
-    'Train Time': 0
-})
-
-print(f"     Unigram only: {acc_uni*100:.2f}% (diff: {diff_uni*100:+.2f}%)")
-
-# Uji dengan min_df berbeda
-print("\nMengubah min_df (minimum document frequency)...")
-for min_df in [1, 2, 3, 5]:
-    vectorizer_temp = TfidfVectorizer(
-        max_features=5000,
-        min_df=min_df,
-        max_df=0.8,
-        ngram_range=(1, 2)
-    )
-
-    X_train_temp = vectorizer_temp.fit_transform(X_train)
-    X_test_temp = vectorizer_temp.transform(X_test)
-
-    # Cek kalau gak ada fitur sama sekali
-    if X_train_temp.shape[1] == 0:
-        print(f"     min_df={min_df}: Tidak ada fitur (skip)")
-        continue
-
-    model_temp = RandomForestClassifier(
-        n_estimators=100,
-        max_depth=20,
-        min_samples_split=5,
-        min_samples_leaf=2,
-        random_state=42,
-        n_jobs=-1
-    )
-
-    model_temp.fit(X_train_temp, y_train)
-    y_pred_temp = model_temp.predict(X_test_temp)
-    acc_temp = accuracy_score(y_test, y_pred_temp)
-    diff = baseline_acc - acc_temp
-
-    ablation_results.append({
-        'Configuration': f'min_df={min_df}',
-        'Description': f'Dokumen minimal: {min_df}',
-        'Accuracy': acc_temp,
-        'Difference': diff,
-        'Features': X_train_temp.shape[1],
-        'Train Time': 0
-    })
-
-    print(f"     min_df={min_df}: {acc_temp*100:.2f}% (diff: {diff*100:+.2f}%)")
-
-# Uji dengan max_df berbeda
-print("\nMengubah max_df (maximum document frequency)...")
-for max_df in [0.5, 0.6, 0.7, 0.8, 0.9, 1.0]:
-    vectorizer_temp = TfidfVectorizer(
-        max_features=5000,
-        min_df=2,
-        max_df=max_df,
-        ngram_range=(1, 2)
-    )
-
-    X_train_temp = vectorizer_temp.fit_transform(X_train)
-    X_test_temp = vectorizer_temp.transform(X_test)
-
-    model_temp = RandomForestClassifier(
-        n_estimators=100,
-        max_depth=20,
-        min_samples_split=5,
-        min_samples_leaf=2,
-        random_state=42,
-        n_jobs=-1
-    )
-
-    model_temp.fit(X_train_temp, y_train)
-    y_pred_temp = model_temp.predict(X_test_temp)
-    acc_temp = accuracy_score(y_test, y_pred_temp)
-    diff = baseline_acc - acc_temp
-
-    ablation_results.append({
-        'Configuration': f'max_df={max_df}',
-        'Description': f'Max document freq: {max_df}',
-        'Accuracy': acc_temp,
-        'Difference': diff,
-        'Features': X_train_temp.shape[1],
-        'Train Time': 0
-    })
-
-    print(f"     max_df={max_df}: {acc_temp*100:.2f}% (diff: {diff*100:+.2f}%)")
-
-# Uji dengan menghapus top N fitur penting
-print("\nMenghapus top N fitur penting...")
-
-# Latih model dulu buat dapetin importance
+print("\nMelatih baseline TF-IDF secara terpisah...")
+# Gunakan parameter default TF-IDF dari train_strict_cv.py
 vectorizer_full = TfidfVectorizer(
     max_features=5000,
     min_df=2,
     max_df=0.8,
     ngram_range=(1, 2)
 )
-
 X_train_full = vectorizer_full.fit_transform(X_train)
+X_test_full = vectorizer_full.transform(X_test)
 feature_names_full = vectorizer_full.get_feature_names_out()
 
-model_full = RandomForestClassifier(
-    n_estimators=100,
-    max_depth=20,
-    min_samples_split=5,
-    min_samples_leaf=2,
-    random_state=42,
-    n_jobs=-1
-)
+# Simpan skor baseline untuk tiap model
+baseline_accs = {}
+model_instances = {}
 
-model_full.fit(X_train_full, y_train)
-importance_full = model_full.feature_importances_
+for name, model in baseline_models.items():
+    model_clone = clone(model)
+    model_clone.fit(X_train_full, y_train)
+    y_pred = model_clone.predict(X_test_full)
+    baseline_accs[name] = accuracy_score(y_test, y_pred)
+    model_instances[name] = model_clone
+    print(f"     Baseline Accuracy ({name}): {baseline_accs[name]*100:.2f}%")
 
-# Uji hapus top N fitur
-for remove_top in [10, 20, 50, 100]:
-    top_indices = np.argsort(importance_full)[-remove_top:]
-    keep_indices = [i for i in range(len(feature_names_full)) if i not in top_indices]
+# Analisis Feature Importance menggunakan Random Forest sebagai acuan (karena RBF SVM sulit diakses koefisiennya)
+print("\nMenarik Feature Importance (menggunakan bobot Random Forest sebagai acuan)...")
+feature_importance = model_instances['Random Forest'].feature_importances_
+top_indices = np.argsort(feature_importance)[-20:][::-1]
 
-    # Filter fitur
-    X_train_reduced = X_train_full[:, keep_indices]
-    X_test_reduced = vectorizer_full.transform(X_test)[:, keep_indices]
+print("\n     Top 20 Most Important Features (Words) via Random Forest:")
+print("-"*70)
+print(f"{'Rank':<5} {'Feature':<20} {'Importance':<12} {'Cumulative':<12}")
+print("-"*70)
+cumulative = 0
+for rank, idx in enumerate(top_indices, 1):
+    imp = feature_importance[idx]
+    feat = feature_names_full[idx]
+    cumulative += imp
+    print(f"{rank:<5} {feat:<20} {imp*100:>11.4f}% {cumulative*100:>11.4f}%")
 
-    model_reduced = RandomForestClassifier(
-        n_estimators=100,
-        max_depth=20,
-        min_samples_split=5,
-        min_samples_leaf=2,
-        random_state=42,
-        n_jobs=-1
-    )
-
-    model_reduced.fit(X_train_reduced, y_train)
-    y_pred_reduced = model_reduced.predict(X_test_reduced)
-    acc_reduced = accuracy_score(y_test, y_pred_reduced)
-    diff = baseline_acc - acc_reduced
-
-    ablation_results.append({
-        'Configuration': f'remove_top_{remove_top}',
-        'Description': f'Hapus top {remove_top} fitur penting',
-        'Accuracy': acc_reduced,
-        'Difference': diff,
-        'Features': X_train_reduced.shape[1],
-        'Train Time': 0
-    })
-
-    print(f"     Remove top {remove_top}: {acc_reduced*100:.2f}% (diff: {diff*100:+.2f}%)")
-
-# Tampilkan ringkasan hasil
+# Mulai Ablation Study
 print("\n" + "="*70)
-print("RINGKASAN HASIL ABLATION STUDY")
+print("ABLATION STUDY - PENGHAPUSAN FITUR UNTUK 3 MODEL ML")
+
+ablation_results = []
+
+def evaluate_models(config_name, desc, X_tr, X_te, fit_time=0):
+    """ Helper function to run the 3 models on the specified X_train and X_test"""
+    for name, model in baseline_models.items():
+        st = time.time()
+        mod = clone(model)
+        mod.fit(X_tr, y_train)
+        tt = time.time() - st
+        
+        y_p = mod.predict(X_te)
+        acc = accuracy_score(y_test, y_p)
+        diff = baseline_accs[name] - acc
+        
+        ablation_results.append({
+            'Model': name,
+            'Configuration': config_name,
+            'Description': desc,
+            'Accuracy': acc,
+            'Difference': diff,
+            'Features': X_tr.shape[1],
+            'Train_Time': tt + fit_time
+        })
+        print(f"       [{name}] {acc*100:.2f}% (diff: {diff*100:+.2f}%)")
+
+# Skenario 1: Kurangi jumlah max_features
+print("\nSkenario 1: Mengurangi jumlah fitur (max_features)...")
+for max_feat in [1000, 2000, 3000, 4000]:
+    print(f"   Test: max_features={max_feat}")
+    vec_temp = TfidfVectorizer(max_features=max_feat, min_df=2, max_df=0.8, ngram_range=(1, 2))
+    st = time.time()
+    X_tr_tmp = vec_temp.fit_transform(X_train)
+    X_te_tmp = vec_temp.transform(X_test)
+    fit_time = time.time() - st
+    
+    evaluate_models(f'max_features={max_feat}', f'{max_feat} fitur teratas', X_tr_tmp, X_te_tmp, fit_time)
+
+# Skenario 2: Hanya unigram (tanpa bigram)
+print("\nSkenario 2: Menghapus bigram (unigram only)...")
+print("   Test: ngram_range=(1,1)")
+vec_uni = TfidfVectorizer(max_features=5000, min_df=2, max_df=0.8, ngram_range=(1, 1))
+st = time.time()
+X_tr_uni = vec_uni.fit_transform(X_train)
+X_te_uni = vec_uni.transform(X_test)
+evaluate_models('unigram_only', 'Hanya unigram (tanpa bigram)', X_tr_uni, X_te_uni, time.time() - st)
+
+# Skenario 3: Hapus Top N fitur terpenting
+print("\nSkenario 3: Menghapus top N fitur paling krusial / pembeda...")
+for remove_top in [10, 20, 50, 100]:
+    print(f"   Test: Hapus Top {remove_top} kata terpenting")
+    # Cari index yang harus dihapus berdasarkan importance full
+    top_n_idx = np.argsort(feature_importance)[-remove_top:]
+    keep_indices = [i for i in range(len(feature_names_full)) if i not in top_n_idx]
+    
+    X_tr_red = X_train_full[:, keep_indices]
+    X_te_red = X_test_full[:, keep_indices]
+    
+    evaluate_models(f'remove_top_{remove_top}', f'Hapus top {remove_top} kata kunci AI vs Manusia', X_tr_red, X_te_red, 0)
+
+# Tampilkan ringkasan
+print("\n" + "="*70)
+print("RINGKASAN HASIL ABLATION STUDY UNTUK KE-3 MODEL")
+print("="*70)
 
 ablation_df = pd.DataFrame(ablation_results)
-ablation_df = ablation_df.sort_values('Accuracy', ascending=False)
 
-print("\n" + "-"*70)
-print(f"{'Configuration':<20} {'Accuracy':<12} {'Difference':<12} {'Features':<10}")
-print("-"*70)
+for name in baseline_models.keys():
+    print(f"\n>> Untuk Model: {name}")
+    print("-"*70)
+    print(f"{'Configuration':<20} {'Accuracy':<12} {'Drop (Loss)':<15} {'Features':<10}")
+    print("-"*70)
+    
+    sub_df = ablation_df[ablation_df['Model'] == name].sort_values('Difference', ascending=False)
+    for _, row in sub_df.iterrows():
+        # Karena kita melihat "jatuhnya" performa, difference positif berarti akurasi turun
+        drop_performa = -row['Difference']  
+        print(f"{row['Configuration']:<20} {row['Accuracy']*100:>11.2f}% {drop_performa*100:>14.2f}% {row['Features']:>10}")
+    print("-"*70)
+    print(f"{'BASELINE':<20} {baseline_accs[name]*100:>11.2f}% {'0.00%':>15} {5000:>10}")
+    print("-"*70)
 
-for _, row in ablation_df.iterrows():
-    print(f"{row['Configuration']:<20} {row['Accuracy']*100:>11.2f}% {row['Difference']*100:>+11.2f}% {row['Features']:>10}")
+# Cek persentase jatuh paling besar
+max_drop = ablation_df.loc[ablation_df['Difference'].idxmax()]
+print("\nKesimpulan Cepat:")
+print(f"Titik paling lemah ada ketika kita menerapkan '{max_drop['Configuration']}'.")
+print(f"Model [{max_drop['Model']}] jatuh paling parah dari baseline sebesar {-max_drop['Difference']*100:.2f}%.")
 
-print("-"*70)
-print(f"{'BASELINE':<20} {baseline_acc*100:>11.2f}% {'-':>11} {5000:>10}")
-print("-"*70)
+# Export CSV
+ablation_df.to_csv(f'{OUT}/ablation_study_results.csv', index=False, encoding='utf-8')
+print("\n[OK] Data lengkap tersimpan")
 
-# Analisis hasil
-print("\n" + "="*70)
-print("ANALISIS")
-
-print("\n1. Konfigurasi dengan akurasi TERTINGGI:")
-best = ablation_df.iloc[0]
-print(f"   {best['Configuration']}: {best['Accuracy']*100:.2f}%")
-print(f"   {best['Description']}")
-
-print("\n2. Konfigurasi dengan penurunan TERBESAR:")
-worst = ablation_df.loc[ablation_df['Difference'].idxmax()]
-print(f"   {worst['Configuration']}: {worst['Accuracy']*100:.2f}% (turun {worst['Difference']*100:.2f}%)")
-print(f"   {worst['Description']}")
-
-print("\n3. Sensitivitas fitur:")
-max_diff = ablation_df['Difference'].max()
-if max_diff < 0.01:
-    print(f"   Model SANGAT STABIL - perubahan fitur minim pengaruh")
-elif max_diff < 0.03:
-    print(f"   Model STABIL - perubahan fitur pengaruh kecil")
-elif max_diff < 0.05:
-    print(f"   Model CUKUP STABIL - perubahan fitur pengaruh sedang")
-else:
-    print(f"   Model KURANG STABIL - perubahan fitur pengaruh besar")
-
-# Analisis fitur penting
-print("\n" + "="*70)
-print("ANALISIS FITUR PENTING")
-
-# List kata-kata kunci
-ai_keywords = ['implementasi', 'penting', 'perlu', 'diharapkan', 'upaya',
-               'program', 'melalui', 'dalam', 'untuk', 'comprehensif',
-               'mengimplementasikan', 'berbagai', 'berdasarkan', 'mengenai',
-               'telah', 'dapat', 'karena', 'dengan', 'yang', 'dan']
-
-formal_words = ['telah', 'tersebut', 'melalui', 'dalam', 'untuk', 'bagai',
-                'apabila', 'yakni', 'ialah', 'merupakan', 'diharapkan',
-                'implementasi', 'pentingnya', 'perlunya']
-
-informal_words = ['gue', 'elo', 'lu', 'gw', 'gak', 'nggak', 'ga', 'udah',
-                  'nih', 'deh', 'dong', 'yuk', 'ayo', 'sih', 'loh', 'kok',
-                  'kenapa', 'gimana', 'sampe', 'dah']
-
-# Cek apakah kata-kata kunci ada di top 20 fitur
-print("\nApakah kata-kata kunci ada di top 20 fitur?")
-print("-"*70)
-
-for category, words in [
-    ('Formal', formal_words),
-    ('Informal', informal_words),
-    ('AI-like', ai_keywords)
-]:
-    found = []
-    for word in words:
-        if word in feature_names:
-            idx = list(feature_names).index(word)
-            imp = feature_importance[idx]
-            if imp > 0:
-                found.append((word, imp))
-
-    if found:
-        found.sort(key=lambda x: x[1], reverse=True)
-        print(f"\n{category} words in features:")
-        for word, imp in found[:5]:
-            print(f"  - {word}: {imp*100:.4f}%")
-
-# Export hasil ke CSV
-print("\n" + "="*70)
-print("EXPORT HASIL")
-
-ablation_df.to_csv('ablation_study_results.csv', index=False, encoding='utf-8')
-print("\n[OK] Export: ablation_study_results.csv")
-
-fi_df = pd.DataFrame({
-    'feature': feature_names,
-    'importance': feature_importance
-})
+fi_df = pd.DataFrame({'feature': feature_names_full, 'importance': feature_importance})
 fi_df = fi_df.sort_values('importance', ascending=False)
-fi_df.to_csv('feature_importance.csv', index=False, encoding='utf-8')
-print("[OK] Export: feature_importance.csv")
+fi_df.to_csv(f'{OUT}/feature_importance.csv', index=False, encoding='utf-8')
 
+# ========== VISUALISASI ==========
+print("\nMembuat visualisasi...")
+plt.style.use('seaborn-v0_8-whitegrid')
+
+MODEL_COLORS = {
+    'Random Forest': '#e74c3c',
+    'Logistic Regression': '#3498db',
+    'SVM (RBF)': '#2ecc71'
+}
+
+# ── GRAFIK 1: Top 20 Feature Importance ──
+print("  [1] Feature Importance Top 20...")
+top_20 = fi_df.head(20).iloc[::-1]  # dibalik biar yang paling penting ada di atas
+fig, ax = plt.subplots(figsize=(10, 8))
+bars = ax.barh(top_20['feature'], top_20['importance'] * 100,
+               color='#e74c3c', alpha=0.85, edgecolor='white', linewidth=0.5)
+for bar, val in zip(bars, top_20['importance'] * 100):
+    ax.text(val + 0.02, bar.get_y() + bar.get_height()/2,
+            f'{val:.2f}%', va='center', fontsize=8, color='#333')
+ax.set_xlabel('Feature Importance (%)', fontsize=12, fontweight='bold')
+ax.set_title('Top 20 Kata Paling Berpengaruh (TF-IDF + Random Forest)\n'
+             'Sebagai Pembeda Teks AI vs Manusia', fontsize=13, fontweight='bold', pad=15)
+ax.grid(axis='x', alpha=0.3)
+plt.tight_layout()
+plt.savefig(f'{OUT}/1_feature_importance_top20.png', dpi=300, bbox_inches='tight')
+plt.close()
+print(f"  [OK] {OUT}/1_feature_importance_top20.png")
+
+# ── GRAFIK 2: Ablation Study - Akurasi per Skenario per Model ──
+print("  [2] Ablation Accuracy per Skenario...")
+configs_order = ['max_features=1000', 'max_features=2000', 'max_features=3000', 'max_features=4000',
+                 'unigram_only', 'remove_top_10', 'remove_top_20', 'remove_top_50', 'remove_top_100']
+model_names = list(baseline_models.keys())
+x = np.arange(len(configs_order))
+width = 0.25
+
+fig, ax = plt.subplots(figsize=(16, 7))
+for i, name in enumerate(model_names):
+    sub = ablation_df[ablation_df['Model'] == name].set_index('Configuration')
+    accs = [sub.loc[c, 'Accuracy'] * 100 if c in sub.index else baseline_accs[name] * 100
+            for c in configs_order]
+    offset = (i - 1) * width
+    bars = ax.bar(x + offset, accs, width, label=name,
+                  color=MODEL_COLORS[name], alpha=0.85, edgecolor='white')
+
+# Garis baseline
+ax.axhline(y=98.0, color='black', linestyle='--', linewidth=1.5, label='Baseline (98.00%)', alpha=0.7)
+ax.set_ylabel('Akurasi (%)', fontsize=12, fontweight='bold')
+ax.set_title('Ablation Study — Akurasi 3 Model di Berbagai Konfigurasi Fitur TF-IDF',
+             fontsize=13, fontweight='bold', pad=15)
+ax.set_xticks(x)
+ax.set_xticklabels(configs_order, rotation=30, ha='right', fontsize=9)
+ax.set_ylim([88, 101])
+ax.legend(fontsize=10, loc='lower left')
+ax.grid(axis='y', alpha=0.3)
+plt.tight_layout()
+plt.savefig(f'{OUT}/2_ablation_accuracy_comparison.png', dpi=300, bbox_inches='tight')
+plt.close()
+print(f"  [OK] {OUT}/2_ablation_accuracy_comparison.png")
+
+# ── GRAFIK 3: Drop Akurasi Heatmap ──
+print("  [3] Heatmap Drop Akurasi...")
+pivot_data = ablation_df.pivot_table(values='Difference', index='Model', columns='Configuration')
+# Reorder columns
+cols_exist = [c for c in configs_order if c in pivot_data.columns]
+pivot_data = pivot_data[cols_exist]
+# Difference positif = akurasi turun dari baseline → didisplay sebagai drop (kita negate)
+pivot_drop = -pivot_data * 100
+
+fig, ax = plt.subplots(figsize=(14, 4))
+sns.heatmap(pivot_drop, annot=True, fmt='.2f', cmap='RdYlGn_r',
+            center=0, linewidths=0.5, ax=ax,
+            annot_kws={"size": 9},
+            cbar_kws={'label': 'Penurunan Akurasi dari Baseline (%)'})
+ax.set_title('Heatmap Penurunan Akurasi (Drop %) — Ablation Study 3 Model\n'
+             'Merah = Turun banyak | Hijau = Naik/Stabil dari Baseline',
+             fontsize=12, fontweight='bold', pad=12)
+ax.set_xlabel('Konfigurasi Fitur', fontsize=11)
+ax.set_ylabel('Model', fontsize=11)
+plt.xticks(rotation=30, ha='right', fontsize=9)
+plt.yticks(rotation=0, fontsize=9)
+plt.tight_layout()
+plt.savefig(f'{OUT}/3_ablation_heatmap_drop.png', dpi=300, bbox_inches='tight')
+plt.close()
+print(f"  [OK] {OUT}/3_ablation_heatmap_drop.png")
+
+print(f"\nSemua grafik tersimpan di: {OUT}/")
 print("\n" + "="*70)
 print("ABLATION STUDY SELESAI!")
+print("="*70)
