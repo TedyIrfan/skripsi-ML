@@ -58,3 +58,6 @@ nul
 venv/
 env/
 ENV/
+
+# Claude
+.claude/
